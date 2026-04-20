@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Hanchu ESS inverter",
+        "description": "Set up a Hanchu inverter using its BLE address.",
+        "data": {
+          "device_name": "Display name",
+          "address": "BLE address"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Confirm Hanchu inverter",
+        "description": "Home Assistant discovered {name} at {address}.",
+        "data": {
+          "device_name": "Display name"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Hanchu ESS inverter",
+        "description": "Update the BLE details for this inverter.",
+        "data": {
+          "device_name": "Display name",
+          "address": "BLE address"
+        }
+      }
+    },
+    "error": {
+      "invalid_address": "Enter a valid Bluetooth MAC address.",
+      "address_change_not_supported": "Remove and re-add the inverter to change its BLE address."
+    },
+    "abort": {
+      "already_configured": "This inverter is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "rssi": {
+        "name": "Signal strength"
+      }
+    }
+  }
+}
