@@ -3,9 +3,10 @@
     "step": {
       "user": {
         "title": "Add Hanchu ESS inverter",
-        "description": "Set up a Hanchu inverter using its BLE address.",
+        "description": "Pick a discovered inverter or enter its BLE address manually.",
         "data": {
           "device_name": "Display name",
+          "discovered_address": "Discovered inverter",
           "address": "BLE address"
         }
       },
@@ -30,7 +31,8 @@
       "address_change_not_supported": "Remove and re-add the inverter to change its BLE address."
     },
     "abort": {
-      "already_configured": "This inverter is already configured."
+      "already_configured": "This inverter is already configured.",
+      "not_supported": "This discovered Hanchu device is not a supported inverter."
     }
   },
   "entity": {

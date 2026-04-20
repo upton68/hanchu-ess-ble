@@ -8,6 +8,7 @@ DOMAIN = "hanchu_ess_ble"
 
 CONF_ADDRESS = "address"
 CONF_DEVICE_NAME = "device_name"
+CONF_DISCOVERED_ADDRESS = "discovered_address"
 
 DEFAULT_NAME = "Hanchu ESS"
 DEFAULT_SCAN_INTERVAL_SECONDS = 30
@@ -59,4 +60,14 @@ DEFAULT_POLL_KEYS: tuple[str, ...] = (
     "P085",
     "P139",
     "L034",
+)
+
+INVERTER_NAME_PREFIXES: tuple[str, ...] = (
+    "HC:L110",
+    "HC:L112",
+    "HC:L113",
+    "HC:L114",
+    "HC:L115",
+    "HC:L120",
+    "HC:L122",
 )

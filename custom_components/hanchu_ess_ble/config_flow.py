@@ -7,10 +7,27 @@ from typing import Any
 
 import voluptuous as vol
 
+from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 
-from .const import CONF_ADDRESS, CONF_DEVICE_NAME, DEFAULT_NAME, DOMAIN
+from .const import (
+    CONF_ADDRESS,
+    CONF_DEVICE_NAME,
+    CONF_DISCOVERED_ADDRESS,
+    DEFAULT_NAME,
+    DOMAIN,
+    INVERTER_NAME_PREFIXES,
+)
+
+
+def _is_inverter_name(name: str | None) -> bool:
+    """Return True when the name matches a supported inverter prefix."""
+
+    if not name:
+        return False
+    return any(name.startswith(prefix) for prefix in INVERTER_NAME_PREFIXES)
+
 
 def _normalise_address(address: str) -> str:
     """Normalise common MAC address input formats."""
@@ -28,19 +45,37 @@ class HanchuEssBleConfigFlow(ConfigFlow, domain=DOMAIN):
 
     _discovery_info: BluetoothServiceInfoBleak | None = None
 
+    def _discovered_inverters(self) -> dict[str, str]:
+        """Return the currently discovered inverter devices."""
+
+        devices: dict[str, str] = {}
+        for service_info in bluetooth.async_discovered_service_info(
+            self.hass,
+            connectable=False,
+        ):
+            name = service_info.name or service_info.device.name
+            if not _is_inverter_name(name):
+                continue
+
+            label = f"{name} ({service_info.address})" if name else service_info.address
+            devices[service_info.address] = label
+
+        return dict(sorted(devices.items(), key=lambda item: item[1].casefold()))
+
     async def async_step_user(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Handle manual setup."""
+        """Handle setup from discovered inverters."""
         errors: dict[str, str] = {}
+        discovered = self._discovered_inverters()
 
         if user_input is not None:
-            try:
-                address = _normalise_address(user_input[CONF_ADDRESS])
-            except ValueError:
+            address_input = user_input.get(CONF_DISCOVERED_ADDRESS)
+            if not address_input:
                 errors["base"] = "invalid_address"
             else:
+                address = _normalise_address(address_input)
                 await self.async_set_unique_id(address)
                 self._abort_if_unique_id_configured()
 
@@ -57,7 +92,7 @@ class HanchuEssBleConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_DEVICE_NAME, default=DEFAULT_NAME): str,
-                    vol.Required(CONF_ADDRESS): str,
+                    vol.Required(CONF_DISCOVERED_ADDRESS): vol.In(discovered),
                 }
             ),
             errors=errors,
@@ -68,6 +103,10 @@ class HanchuEssBleConfigFlow(ConfigFlow, domain=DOMAIN):
         discovery_info: BluetoothServiceInfoBleak,
     ) -> ConfigFlowResult:
         """Handle Bluetooth discovery."""
+        discovered_name = discovery_info.name or discovery_info.device.name
+        if not _is_inverter_name(discovered_name):
+            return self.async_abort(reason="not_supported")
+
         address = discovery_info.address
         await self.async_set_unique_id(address)
         self._abort_if_unique_id_configured()

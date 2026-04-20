@@ -7,6 +7,29 @@
   "requirements": ["pycryptodome==3.20.0"],
   "codeowners": ["@blustery7752"],
   "dependencies": ["bluetooth_adapters"],
+  "bluetooth": [
+    {
+      "local_name": "HC:L110*"
+    },
+    {
+      "local_name": "HC:L112*"
+    },
+    {
+      "local_name": "HC:L113*"
+    },
+    {
+      "local_name": "HC:L114*"
+    },
+    {
+      "local_name": "HC:L115*"
+    },
+    {
+      "local_name": "HC:L120*"
+    },
+    {
+      "local_name": "HC:L122*"
+    }
+  ],
   "loggers": ["Crypto"],
   "iot_class": "local_polling",
   "config_flow": true,
