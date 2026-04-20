@@ -1,0 +1,11 @@
+{
+  "domain": "hanchu_ess_ble",
+  "name": "Hanchu ESS BLE",
+  "version": "0.1.0",
+  "documentation": "https://github.com/blustery7752/hanchu-ess-ble",
+  "requirements": ["pycryptodome==3.20.0"],
+  "codeowners": ["@blustery7752"],
+  "iot_class": "local_polling",
+  "config_flow": true,
+  "issue_tracker": "https://github.com/blustery7752/hanchu-ess-ble/issues"
+}
