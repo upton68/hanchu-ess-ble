@@ -5,16 +5,24 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothChange, BluetoothServiceInfoBleak
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .ble_client import HanchuBleSnapshot, snapshot_from_service_info
-from .const import CONF_ADDRESS, CONF_DEVICE_NAME, DEFAULT_NAME, DOMAIN, SCAN_INTERVAL
+from .ble_client import HanchuBleClient, HanchuBleSnapshot, snapshot_from_service_info
+from .const import (
+    CONF_ADDRESS,
+    CONF_DEVICE_NAME,
+    DEFAULT_NAME,
+    DEFAULT_POLL_KEYS,
+    DOMAIN,
+    SCAN_INTERVAL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -32,6 +40,7 @@ class HanchuCoordinatorData:
     is_present: bool = False
     manufacturer_data: dict[int, bytes] | None = None
     service_data: dict[str, bytes] | None = None
+    values: dict[str, Any] | None = None
 
 
 class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
@@ -43,6 +52,8 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         self.entry = entry
         self.address: str = entry.data[CONF_ADDRESS]
         self.configured_name: str = entry.data.get(CONF_DEVICE_NAME, DEFAULT_NAME)
+        self.poll_keys = list(DEFAULT_POLL_KEYS)
+        self.client = HanchuBleClient(hass, self.address, self.configured_name)
         self._unsubscribe_bluetooth: CALLBACK_TYPE | None = None
         self._unsubscribe_unavailable: CALLBACK_TYPE | None = None
 
@@ -83,6 +94,7 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
 
     async def _async_update_data(self) -> HanchuCoordinatorData:
         """Fetch the latest Bluetooth information for the configured inverter."""
+        _LOGGER.debug("Refreshing Hanchu coordinator for address=%s", self.address)
         service_info = bluetooth.async_last_service_info(
             self.hass,
             self.address,
@@ -101,13 +113,33 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
                     is_present=False,
                     manufacturer_data=self.data.manufacturer_data,
                     service_data=self.data.service_data,
+                    values=self.data.values,
                 )
             raise ConfigEntryNotReady(
                 f"No BLE advertisements seen yet for configured address {self.address}"
             )
 
         snapshot = snapshot_from_service_info(service_info)
-        return self._build_data(snapshot, is_present=True)
+        try:
+            reply = await self.client.async_read_values(self.poll_keys, encrypted=True)
+        except Exception as err:
+            _LOGGER.debug(
+                "Failed Hanchu coordinator refresh for address=%s",
+                self.address,
+                exc_info=True,
+            )
+            raise UpdateFailed(f"Failed to read inverter values: {err}") from err
+
+        _LOGGER.debug(
+            "Hanchu coordinator refresh succeeded for address=%s values=%s",
+            self.address,
+            reply.as_dict(),
+        )
+        return self._build_data(
+            snapshot,
+            is_present=True,
+            values=reply.as_dict(),
+        )
 
     @callback
     def _async_handle_bluetooth_event(
@@ -138,6 +170,7 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
                 is_present=False,
                 manufacturer_data=self.data.manufacturer_data,
                 service_data=self.data.service_data,
+                values=self.data.values,
             )
         )
 
@@ -146,6 +179,7 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         snapshot: HanchuBleSnapshot,
         *,
         is_present: bool,
+        values: dict[str, Any] | None = None,
     ) -> HanchuCoordinatorData:
         """Convert BLE data into coordinator state."""
         return HanchuCoordinatorData(
@@ -158,4 +192,5 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
             is_present=is_present,
             manufacturer_data=snapshot.manufacturer_data,
             service_data=snapshot.service_data,
+            values=values if values is not None else (self.data.values if self.data else None),
         )
