@@ -34,6 +34,7 @@ from .protocol import (
 _LOGGER = logging.getLogger(__name__)
 _DEFAULT_OPERATION_TIMEOUT = 10.0
 _HANDSHAKE_ACK_TIMEOUT = 5.0
+_DEFAULT_READ_BATCH_SIZE = 12
 
 
 @dataclass(slots=True)
@@ -153,18 +154,23 @@ class HanchuBleClient:
             if encrypted:
                 await self._async_perform_handshake(client)
 
-            payload = self._session.encode_read_request(keys, encrypt=encrypted)
-            _LOGGER.debug(
-                "Writing Hanchu read request address=%s payload=%s",
-                self.address,
-                payload.hex(),
-            )
-            await client.write_gatt_char(
-                BLE_WRITE_CHARACTERISTIC_UUID,
-                payload,
-                response=False,
-            )
-            reply = await self._async_wait_for_reply(encrypted=encrypted)
+            replies: list[HanchuReply] = []
+            for batch in _batched(keys, _DEFAULT_READ_BATCH_SIZE):
+                payload = self._session.encode_read_request(batch, encrypt=encrypted)
+                _LOGGER.debug(
+                    "Writing Hanchu read request address=%s keys=%s payload=%s",
+                    self.address,
+                    batch,
+                    payload.hex(),
+                )
+                await client.write_gatt_char(
+                    BLE_WRITE_CHARACTERISTIC_UUID,
+                    payload,
+                    response=False,
+                )
+                replies.append(await self._async_wait_for_reply(encrypted=encrypted))
+
+            reply = _merge_replies(replies)
             _LOGGER.debug(
                 "Completed Hanchu BLE read address=%s tid=%s values=%s",
                 self.address,
@@ -261,3 +267,26 @@ class HanchuBleClient:
         """Discard any notifications left from a previous operation."""
         while not self._notification_queue.empty():
             self._notification_queue.get_nowait()
+
+
+def _batched(values: list[str], size: int) -> list[list[str]]:
+    """Return values split into bounded batches."""
+
+    return [values[index : index + size] for index in range(0, len(values), size)]
+
+
+def _merge_replies(replies: list[HanchuReply]) -> HanchuReply:
+    """Merge batched read replies into one logical response."""
+
+    if not replies:
+        return HanchuReply(tid=None, act=None, cmd=None, code=None)
+
+    first = replies[0]
+    data = [point for reply in replies for point in reply.data]
+    return HanchuReply(
+        tid=first.tid,
+        act=first.act,
+        cmd=first.cmd,
+        code=first.code,
+        data=data,
+    )
