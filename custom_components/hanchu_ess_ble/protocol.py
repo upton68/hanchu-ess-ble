@@ -293,8 +293,11 @@ class HanchuReplyAssembler:
         if parsed.packet_type != _FINAL_PACKET_TYPE:
             return None
 
+        first_packet_index = min(self._parts)
         missing_indexes = [
-            index for index in range(parsed.packet_index + 1) if index not in self._parts
+            index
+            for index in range(first_packet_index, parsed.packet_index + 1)
+            if index not in self._parts
         ]
         if missing_indexes:
             self.reset()
