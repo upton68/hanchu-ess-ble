@@ -166,12 +166,42 @@ def build_read_request(keys: list[str], tid: str = "10001") -> bytes:
     return encoded
 
 
+def _decode_json_payload(payload: bytes) -> dict[str, Any]:
+    """Decode a reply payload after discarding any leading transport bytes."""
+
+    cleaned_payload = payload.rstrip(b"\x00")
+    decode_error: json.JSONDecodeError | None = None
+    for index, byte in enumerate(cleaned_payload):
+        if byte not in b"{[":
+            continue
+
+        try:
+            document = json.loads(cleaned_payload[index:].decode("utf-8"))
+        except json.JSONDecodeError as err:
+            decode_error = err
+            continue
+
+        if isinstance(document, dict):
+            if index:
+                _LOGGER.debug(
+                    "Trimmed %s leading byte(s) before Hanchu JSON payload",
+                    index,
+                )
+            return document
+
+        raise HanchuProtocolError("Hanchu reply JSON payload must be an object")
+
+    if decode_error is not None:
+        raise decode_error
+
+    raise HanchuProtocolError("Hanchu reply payload does not contain JSON")
+
+
 def parse_reply_payload(payload: bytes) -> HanchuReply:
     """Parse a JSON reply payload into a structured object."""
 
-    cleaned_payload = payload.rstrip(b"\x00").decode("utf-8")
-    _LOGGER.debug("Parsing Hanchu reply payload=%s", cleaned_payload)
-    document = json.loads(cleaned_payload)
+    document = _decode_json_payload(payload)
+    _LOGGER.debug("Parsing Hanchu reply payload=%s", document)
     points = [
         HanchuDataPoint(key=item["k"], value=item.get("v"))
         for item in document.get("data", [])
@@ -209,6 +239,14 @@ def parse_packet(packet: bytes) -> HanchuPacket | None:
 
     if len(packet) < _FRAME_HEADER_LENGTH:
         raise HanchuProtocolError("Notification packet is too short")
+
+    if packet[0] in b"{[":
+        return HanchuPacket(
+            packet_type=_FINAL_PACKET_TYPE,
+            packet_index=0,
+            payload_length=len(packet),
+            payload=packet,
+        )
 
     if packet[0] != _READ_MESSAGE_TYPE:
         raise HanchuProtocolError(f"Unsupported notification type 0x{packet[0]:02x}")
@@ -254,6 +292,18 @@ class HanchuReplyAssembler:
 
         if parsed.packet_type != _FINAL_PACKET_TYPE:
             return None
+
+        first_packet_index = min(self._parts)
+        missing_indexes = [
+            index
+            for index in range(first_packet_index, parsed.packet_index + 1)
+            if index not in self._parts
+        ]
+        if missing_indexes:
+            self.reset()
+            raise HanchuProtocolError(
+                f"Missing Hanchu packet fragment(s): {missing_indexes}"
+            )
 
         merged = b"".join(payload for _, payload in sorted(self._parts.items()))
         _LOGGER.debug(
