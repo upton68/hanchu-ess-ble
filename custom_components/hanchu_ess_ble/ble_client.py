@@ -102,6 +102,13 @@ class HanchuBleSession:
             return payload
         return encrypt_message(payload, self._secret_key)
 
+    def encode_write_request(self, key: str, value, *, encrypt: bool = True) -> bytes:
+        """Encode a JSON write request, encrypting it when requested."""
+        payload = build_write_request(key, value)
+        if not encrypt:
+            return payload
+        return encrypt_message(payload, self._secret_key)
+
     def decode_notification(self, payload: bytes, *, encrypted: bool = True) -> HanchuReply | None:
         """Decode a notification payload into a structured reply when complete."""
         packet = decrypt_message(payload, self._secret_key) if encrypted else payload
