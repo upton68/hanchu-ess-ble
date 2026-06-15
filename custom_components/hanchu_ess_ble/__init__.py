@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, PLATFORMS
 from .coordinator import HanchuBleCoordinator
 
+_LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Hanchu ESS BLE from a config entry."""
@@ -18,8 +21,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-    return True
 
+    async def handle_test_write(call):
+        key = call.data["key"]
+        value = call.data["value"]
+        _LOGGER.info("[HANCHU_BLE_TEST] Writing %s = %s", key, value)
+        try:
+            reply = await coordinator.client.async_write_value(key, value, encrypted=True)
+            _LOGGER.info("[HANCHU_BLE_TEST] Write result: %s", reply.as_dict())
+        except Exception as err:
+            _LOGGER.error("[HANCHU_BLE_TEST] Write failed: %s", err)
+
+    hass.services.async_register(DOMAIN, "test_write", handle_test_write)
+
+    return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
