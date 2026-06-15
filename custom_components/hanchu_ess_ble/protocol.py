@@ -165,6 +165,19 @@ def build_read_request(keys: list[str], tid: str = "10001") -> bytes:
     _LOGGER.debug("Built Hanchu read request tid=%s keys=%s payload=%s", tid, keys, encoded)
     return encoded
 
+def build_write_request(key: str, value, tid: str = "10001") -> bytes:
+    """Build a compact JSON write request for a single inverter key."""
+
+    payload = {
+        "act": "3",
+        "cmd": "local",
+        "data": [{"k": key, "v": value}],
+        "tid": tid,
+    }
+    encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    _LOGGER.debug("Built Hanchu write request tid=%s key=%s value=%s payload=%s", tid, key, value, encoded)
+    return encoded
+
 
 def _decode_json_payload(payload: bytes) -> dict[str, Any]:
     """Decode a reply payload after discarding any leading transport bytes."""
