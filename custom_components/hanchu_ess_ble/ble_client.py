@@ -26,6 +26,7 @@ from .protocol import (
     HanchuReplyAssembler,
     build_handshake_command,
     build_read_request,
+    build_write_request,
     decrypt_message,
     derive_session_key,
     encrypt_message,
