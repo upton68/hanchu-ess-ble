@@ -34,6 +34,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.services.async_register(DOMAIN, "test_write", handle_test_write)
 
+    async def handle_test_read(call):
+        keys = call.data["keys"]
+        _LOGGER.info("[HANCHU_BLE_TEST] Reading %s", keys)
+        try:
+            reply = await coordinator.client.async_read_values(keys, encrypted=True)
+            _LOGGER.info("[HANCHU_BLE_TEST] Read result: %s", reply.as_dict())
+        except Exception as err:
+            _LOGGER.error("[HANCHU_BLE_TEST] Read failed: %s", err)
+
+    hass.services.async_register(DOMAIN, "test_read", handle_test_read)
+
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
