@@ -81,6 +81,14 @@ def _register_description(
 
 
 REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
+    "P005": _register_description(
+        key="P005",
+        name="Inverter Power Limit",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+        enabled_default=False,
+    ),
     "P024": _register_description(
         key="P024",
         name="PV1 Voltage",
