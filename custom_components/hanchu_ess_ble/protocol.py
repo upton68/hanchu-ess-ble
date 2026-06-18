@@ -238,12 +238,13 @@ class HanchuPacket:
     payload_length: int
     payload: bytes
 
-
 def parse_packet(packet: bytes) -> HanchuPacket | None:
     """Parse a single notification packet.
 
     Returns `None` for the short `0500`-style AES acknowledgement frames that the
-    Android app explicitly ignores.
+    Android app explicitly ignores, and for any unrecognised/plaintext notification
+    that doesn't match the expected binary frame format (logged as a warning rather
+    than raised, so a stray device response can't crash the active BLE operation).
     """
 
     if packet.startswith(AES_ACK_PREFIX) and len(packet) <= _FRAME_HEADER_LENGTH:
@@ -251,7 +252,10 @@ def parse_packet(packet: bytes) -> HanchuPacket | None:
         return None
 
     if len(packet) < _FRAME_HEADER_LENGTH:
-        raise HanchuProtocolError("Notification packet is too short")
+        _LOGGER.warning(
+            "Ignoring undersized Hanchu notification packet=%s", _hex_preview(packet)
+        )
+        return None
 
     if packet[0] in b"{[":
         return HanchuPacket(
@@ -262,12 +266,21 @@ def parse_packet(packet: bytes) -> HanchuPacket | None:
         )
 
     if packet[0] != _READ_MESSAGE_TYPE:
-        raise HanchuProtocolError(f"Unsupported notification type 0x{packet[0]:02x}")
+        _LOGGER.warning(
+            "Ignoring Hanchu notification with unsupported type 0x%02x payload=%s",
+            packet[0],
+            _hex_preview(packet),
+        )
+        return None
 
     payload_length = int.from_bytes(packet[4:6], byteorder="little")
     payload = packet[6 : 6 + payload_length]
     if len(payload) != payload_length:
-        raise HanchuProtocolError("Notification packet payload length mismatch")
+        _LOGGER.warning(
+            "Ignoring Hanchu notification with payload length mismatch packet=%s",
+            _hex_preview(packet),
+        )
+        return None
 
     return HanchuPacket(
         packet_type=packet[1],
