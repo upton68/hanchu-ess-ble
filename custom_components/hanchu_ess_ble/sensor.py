@@ -346,8 +346,7 @@ class HanchuDiagnosticSensor(HanchuCoordinatorEntity, SensorEntity):
 
         return None
 
-
-class HanchuRegisterSensor(HanchuCoordinatorEntity, SensorEntity):
+class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
     """Raw inverter register sensor."""
 
     _attr_entity_registry_enabled_default = True
