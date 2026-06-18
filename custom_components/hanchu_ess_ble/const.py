@@ -13,7 +13,7 @@ CONF_DISCOVERED_ADDRESS = "discovered_address"
 DEFAULT_NAME = "Hanchu ESS"
 DEFAULT_SCAN_INTERVAL_SECONDS = 30
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SELECT, Platform.NUMBER, Platform.TIME]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SELECT]
 SCAN_INTERVAL = timedelta(seconds=DEFAULT_SCAN_INTERVAL_SECONDS)
 
 MANUFACTURER = "Hanchu"
