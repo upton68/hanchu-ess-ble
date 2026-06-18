@@ -393,27 +393,3 @@ class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
 
         return value
         
-class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
-    """Derived house load power sensor — Grid + AC PV + Battery."""
-
-    _attr_name = "Load Power"
-    _attr_device_class = SensorDeviceClass.POWER
-    _attr_native_unit_of_measurement = UnitOfPower.WATT
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_icon = "mdi:home-lightning-bolt"
-
-    def __init__(self, coordinator: HanchuBleCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.address}_load_power"
-
-    @property
-    def native_value(self) -> float | None:
-        """Return house load = Grid Power + AC PV + Battery Power."""
-        values = self.coordinator.data.values or {}
-        try:
-            grid = float(values.get("P644") or 0)
-            pv = float(values.get("P237") or 0)
-            battery = float(values.get("P069") or 0)
-            return round(grid + pv + battery, 1)
-        except (ValueError, TypeError):
-            return None
