@@ -36,6 +36,7 @@ DEFAULT_POLL_KEYS: tuple[str, ...] = (
     "P079", "P080", "P081", "P082", "P083", "P084", "P085",
     "P139", "L034",
     # Confirmed additions — cloud parity build (June 2026)
+    "P005",  # Inverter Power Limit (W) — used as dynamic max for charge/discharge power limits
     "P088",  # Battery Capacity (Ah)
     "P237",  # AC Coupled PV Power
     "P644",  # Grid Power
