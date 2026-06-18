@@ -28,11 +28,13 @@ from .coordinator import HanchuBleCoordinator
 from .entity import HanchuCoordinatorEntity
 
 UNIT_VAR = "var"
+
 REGISTER_SCALE_FACTORS: dict[str, float] = {
     "P071": 100.0,
     "P069": -1.0,
     "P088": 0.0512,
 }
+
 DISABLED_BY_DEFAULT_KEYS: set[str] = {
     "P055",
     "P056",
@@ -151,7 +153,7 @@ REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
     ),
     "P060": _register_description(
         key="P060",
-        name="PV2 Total Power",
+        name="PV Total Power",
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -343,10 +345,10 @@ class HanchuDiagnosticSensor(HanchuCoordinatorEntity, SensorEntity):
         """Return the sensor's value."""
         if self.entity_description.key == "rssi":
             return self.coordinator.data.rssi
-
         return None
 
-class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
+
+class HanchuRegisterSensor(HanchuCoordinatorEntity, SensorEntity):
     """Raw inverter register sensor."""
 
     _attr_entity_registry_enabled_default = True
@@ -381,7 +383,6 @@ class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
             return None
 
         scale_factor = REGISTER_SCALE_FACTORS.get(self._register_key)
-
         if scale_factor is not None:
             if isinstance(value, (int, float)):
                 return value * scale_factor
@@ -392,4 +393,30 @@ class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
                     return value
 
         return value
-        
+
+
+class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
+    """Derived house load power sensor — Grid + AC PV + Battery."""
+
+    _attr_name = "Load Power"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:home-lightning-bolt"
+
+    def __init__(self, coordinator: HanchuBleCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_load_power"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return house load = Grid Power + AC PV + Battery Power."""
+        values = self.coordinator.data.values or {}
+        try:
+            grid = float(values.get("P644") or 0)
+            pv = float(values.get("P237") or 0)
+            battery = float(values.get("P069") or 0)
+            return round(grid + pv + battery, 1)
+        except (ValueError, TypeError):
+            return None
