@@ -12,10 +12,10 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 WORK_MODES = {
-    "Self-consumption": "1",
-    "Backup Energy": "2",
-    "User-defined": "3",
-    "Off-grid": "4",
+    "Self-consumption": 1,
+    "Backup Energy": 2,
+    "User-defined": 3,
+    "Off-grid": 4,
 }
 
 WORK_MODES_REVERSE = {v: k for k, v in WORK_MODES.items()}
