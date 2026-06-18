@@ -13,6 +13,8 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+POWER_LIMIT_KEYS = {"charge_power_limit", "discharge_power_limit"}
+
 NUMBERS = {
     "charge_power_limit": {
         "name": "Charge Power Limit",
@@ -22,6 +24,7 @@ NUMBERS = {
         "step": 100,
         "min": 0,
         "max": 5000,
+        "dynamic_max": "P005",
     },
     "discharge_power_limit": {
         "name": "Discharge Power Limit",
@@ -31,6 +34,7 @@ NUMBERS = {
         "step": 100,
         "min": 0,
         "max": 5000,
+        "dynamic_max": "P005",
     },
     "max_charge_soc": {
         "name": "Maximum Charge SOC",
@@ -99,6 +103,19 @@ class HanchuBleNumber(CoordinatorEntity, NumberEntity):
             manufacturer="Hanchu",
             model="ESS Device (Local BLE)",
         )
+
+    @property
+    def native_max_value(self) -> float:
+        """Return max value — use P005 dynamically for power limits."""
+        dynamic_key = self._config.get("dynamic_max")
+        if dynamic_key and self.coordinator.data and self.coordinator.data.values:
+            raw = self.coordinator.data.values.get(dynamic_key)
+            if raw is not None:
+                try:
+                    return float(raw)
+                except (ValueError, TypeError):
+                    pass
+        return self._config["max"]
 
     @property
     def native_value(self) -> float | None:
