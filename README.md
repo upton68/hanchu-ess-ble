@@ -1,125 +1,123 @@
-# Hanchu ESS BLE
+# Hanchu ESS BLE — Home Assistant Integration
 
-Home Assistant custom integration for Hanchu ESS systems using local Bluetooth Low Energy (BLE).
+A local Bluetooth (BLE) integration for Hanchu iESS battery storage systems, providing real-time sensor data and full write control of work mode, charge/discharge limits, SOC targets, and time slots — entirely over BLE, with no dependency on the Hanchu cloud.
 
-This integration connects directly to supported Hanchu inverters over BLE and exposes inverter data as Home Assistant sensors.
+> ⚠️ **This integration is not supported by Hanchu.** Use at your own risk. Incorrect settings may affect your inverter's operation. Always verify critical changes via the official Hanchu app.
 
-## Current Status
+---
 
-This project is working, but still early.
+## Background
 
-What it can do today:
-- Discover supported Hanchu inverters over Bluetooth
-- Connect locally over BLE
-- Poll a set of inverter registers
-- Expose core battery, PV, grid, EPS, and diagnostic sensors
+This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com/Blustery7752/hanchu-ess-ble), which provided the original BLE read-only foundation. Write control was developed by reverse-engineering the local BLE protocol with significant reference to [1ulk's Hanchu BLE Controller](https://1ulk.github.io/hanchu-) — a browser-based Web Bluetooth control panel whose `hanchu-params.js` parameter registry and `hanchu-controller.js` write implementation were invaluable in confirming the protocol structure and P/L-code mappings.
 
-What is not implemented yet:
-- Battery device support as separate BLE devices
-- Full register coverage
-- Full scaling/units verification for every sensor
-- Write/configuration commands
+---
 
-## Supported Device Discovery
+## Features
 
-The integration currently targets inverter advertisements with names starting with:
+- **Real-time sensors**: Battery SOC, Battery Power, Battery Temperature, Battery Capacity, Grid Power, AC Coupled PV Power, Load Power (derived), Grid Frequency, L1 Voltage/Current, EPS sensors, and more
+- **Work Mode control**: switch between Self-consumption, Backup, User-defined, and Off-grid modes
+- **Charge/Discharge Power Limits**: set maximum charge and discharge power in Watts
+- **SOC controls**: Maximum Charge SOC, Minimum Discharge SOC (on-grid), Grid to Battery Charge Maximum
+- **Time slot scheduling**: full control of all six charge and discharge time periods (User-defined mode)
+- **Fully local**: no cloud dependency — works even if the Hanchu cloud is unavailable
 
-- `HC:L110`
-- `HC:L112`
-- `HC:L113`
-- `HC:L114`
-- `HC:L115`
-- `HC:L120`
-- `HC:L122`
+---
 
-Battery/BMS devices are intentionally not included yet.
+## Requirements
+
+- A Hanchu iESS battery storage system with a compatible inverter
+- Home Assistant with Bluetooth support, or a Bluetooth proxy
+- A Bluetooth proxy is strongly recommended for reliable connectivity — tested with the **M5Stack Atom Lite** running ESPHome's Bluetooth proxy firmware, placed within range of the inverter
+
+---
 
 ## Installation
 
-### HACS
+### Via HACS (recommended)
 
-1. Open HACS in Home Assistant
-2. Go to `Integrations`
-3. Open the menu in the top right
-4. Choose `Custom repositories`
-5. Add this repository URL
-6. Select category `Integration`
-7. Install `Hanchu ESS BLE`
-8. Restart Home Assistant
+1. In HACS, go to **Integrations → Custom repositories**
+2. Add `https://github.com/upton68/hanchu-ess-ble` as an **Integration**
+3. Search for "Hanchu ESS BLE" and install
+4. Restart Home Assistant
 
 ### Manual
 
-1. Copy `custom_components/hanchu_ess_ble` into your Home Assistant `custom_components` directory
+1. Copy the `custom_components/hanchu_ess_ble` folder into your HA `config/custom_components/` directory
 2. Restart Home Assistant
 
-## Setup
+---
 
-1. Make sure Bluetooth is working on the Home Assistant host
-2. Bring the inverter into BLE range
-3. In Home Assistant, go to `Settings -> Devices & Services`
-4. Add `Hanchu ESS BLE`, or wait for Bluetooth discovery
-5. Select the discovered inverter
-6. Finish setup
+## Configuration
 
-## Sensors
+1. Go to **Settings → Devices & Services → Add Integration**
+2. Search for **Hanchu ESS BLE**
+3. Select your inverter from the discovered Bluetooth devices (device name begins with `HC:`)
+4. The integration will connect and populate all entities automatically
 
-The integration currently includes a mix of enabled-by-default and disabled-by-default sensors.
+---
 
-Examples of currently exposed sensors:
-- Battery SoC
-- Battery Temperature
-- Battery Power
-- PV1 Voltage / Current
-- PV2 Voltage / Current
-- PV Energy Today / Total
-- Grid Frequency
-- EPS Voltage / Current / Frequency
-- EPS Active Power
-- RSSI
+## Entities
 
-Some sensors are disabled by default.
+### Controls
 
-## Notes
+| Entity | Description |
+|---|---|
+| Work Mode | Select: Self-consumption, Backup, User-defined, Off-grid |
+| Charge Power Limit | Maximum battery charge power (W) |
+| Discharge Power Limit | Maximum battery discharge power (W) |
+| Maximum Charge SOC | Upper SOC limit — battery charges to this level then stops (%) |
+| Minimum Discharge SOC | On-grid hard floor — battery will not discharge below this level (%) |
+| Grid to Battery Charge Maximum | Upper SOC limit for grid-to-battery charging (%) |
+| Charge Slot 1–3 Start/End | Charge time periods for User-defined mode |
+| Discharge Slot 1–3 Start/End | Discharge time periods for User-defined mode |
 
-- The integration uses local BLE only
-- No cloud account is required
-- Sensor scaling is still being refined as more real-world data is collected
+### Sensors (enabled by default)
 
-## Debug Logging
+| Entity | Description |
+|---|---|
+| Battery SoC | State of charge (%) |
+| Battery Power | Charge/discharge power — positive = charging, negative = discharging (W) |
+| Battery Temperature | Battery temperature (°C) |
+| Battery Capacity | Rated battery capacity (kWh) |
+| Grid Power | Grid import/export — positive = importing, negative = exporting (W) |
+| AC Coupled PV Power | AC-coupled solar generation (W) |
+| Load Power | Derived house load — Grid + AC PV + Battery (W) |
+| Grid Frequency | AC grid frequency (Hz) |
+| L1 Voltage | Grid line voltage (V) |
+| L1 Current | Grid line current (A) |
+| EPS Voltage/Current/Frequency/Power | Emergency power supply readings |
 
-If you need to troubleshoot BLE communication, add this to your `configuration.yaml`:
+### Sensors (disabled by default)
 
-```yaml
-logger:
-  default: info
-  logs:
-    custom_components.hanchu_ess_ble: debug
-```
+Battery Voltage, Battery Current, Active Power, Reactive Power, Power Factor, Battery Charge Today, Battery Discharge Today, PV Energy Today/Total, EPS Energy Today/Total.
 
-This enables detailed logs for:
-- BLE discovery
-- connection and disconnection
-- encrypted handshake
-- request writes
-- notifications
-- packet reassembly
-- parsed inverter replies
+---
 
-## Known Caveats
+## Known Limitations
 
-- Not all values have been added yet
-- Some values may need additional scaling adjustments depending on the device family
+- **Daily grid import/export energy** — not available over the local BLE protocol on tested hardware/firmware. The official app shows these figures, but the corresponding BLE keys were not found to return data despite exhaustive testing.
+- **AC Coupled PV Power** — may show a small negative value (a few watts) at low light or when the AC-coupled inverter is in standby. This is normal and reflects the actual power flow at the AC coupling point, not a sensor error.
+- **Fast charge/discharge** — not available locally. This feature appears to be cloud-only on tested hardware.
+- **DC-coupled PV sensors** (PV1/PV2 Voltage/Current, PV Total Power) — will read zero on AC-coupled systems where solar is connected via a separate inverter rather than directly into the Hanchu's DC inputs.
+- **This integration is not supported by Hanchu.** It was developed independently by reverse-engineering the local BLE protocol.
 
-## Contributing
+---
 
-Useful contributions include:
-- additional inverter model testing
-- confirmed register meanings
-- confirmed unit/scaling corrections
-- packet captures from supported devices
-- battery/BMS BLE support
+## Protocol Notes
+
+The Hanchu iESS communicates over BLE using AES-128-CFB8 encryption with a per-session key derived from a handshake token. Reads use `act: "1"` and writes use `act: "3"` in a JSON payload sent to the write characteristic (`0000ff02-...`), with responses arriving via notifications on the read characteristic (`0000ff01-...`).
+
+For a comprehensive mapping of all known P/L-codes, see the [protocol mapping reference](docs/hanchu-ble-local-protocol-mapping.md) included in this repository.
+
+---
+
+## Credits
+
+- **[Blustery7752](https://github.com/Blustery7752/hanchu-ess-ble)** — original `hanchu-ess-ble` Home Assistant integration, which provided the BLE connection, encryption, and read foundation this fork builds on
+- **[1ulk](https://github.com/1ulk/1ulk.github.io)** — browser-based Hanchu BLE Controller, whose `hanchu-params.js` parameter registry and `hanchu-controller.js` write implementation were essential references for the write protocol and P/L-code mappings
+
+---
 
 ## Disclaimer
 
-This is an unofficial community integration and is not affiliated with or endorsed by Hanchu.
-
+This is an independent community project with no affiliation with or support from Hanchu. Use at your own risk. The authors accept no liability for any damage to equipment or loss of functionality resulting from use of this integration.
