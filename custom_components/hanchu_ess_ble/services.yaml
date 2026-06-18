@@ -1,0 +1,32 @@
+test_write:
+  name: Test BLE Write
+  description: Write a single key/value pair to the Hanchu inverter over BLE.
+  fields:
+    key:
+      name: Key
+      description: The P/L code key to write (e.g. P651)
+      required: true
+      example: P651
+      selector:
+        text:
+    value:
+      name: Value
+      description: The value to write
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 100000
+
+test_read:
+  name: Test BLE Read
+  description: Read one or more keys from the Hanchu inverter over BLE.
+  fields:
+    keys:
+      name: Keys
+      description: List of P/L code keys to read (e.g. [P651, L017])
+      required: true
+      example: "[P651, L017]"
+      selector:
+        object:
