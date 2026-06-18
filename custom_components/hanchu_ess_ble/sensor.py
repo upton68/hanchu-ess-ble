@@ -274,7 +274,6 @@ REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
     "P088": _register_description(
         key="P088",
         name="Battery Capacity",
-        device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
     ),
