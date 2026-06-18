@@ -1,3 +1,9 @@
 {
-  "name": "Hanchu ESS BLE"
+  "name": "Hanchu ESS BLE",
+  "description": "Local BLE integration for Hanchu iESS battery storage systems — real-time sensors and full write control of work mode, charge/discharge limits, SOC targets, and time slots, with no cloud dependency.",
+  "content_in_root": false,
+  "render_readme": true,
+  "homeassistant": "2024.1.0",
+  "country": [],
+  "category": "integration"
 }
