@@ -39,8 +39,6 @@ DEFAULT_POLL_KEYS: tuple[str, ...] = (
     "P088",  # Battery Capacity (Ah)
     "P237",  # AC Coupled PV Power
     "P644",  # Grid Power
-    "P638",  # Grid Power Purchased Today
-    "P639",  # Grid Power Sold Today
     "P651",  # Work Mode
     "L017",  # Charge Power Limit
     "L018",  # Discharge Power Limit
