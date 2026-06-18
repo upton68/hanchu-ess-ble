@@ -30,6 +30,8 @@ from .entity import HanchuCoordinatorEntity
 UNIT_VAR = "var"
 REGISTER_SCALE_FACTORS: dict[str, float] = {
     "P071": 100.0,
+    "P069": -1.0,
+    "P088": 0.0512,
 }
 DISABLED_BY_DEFAULT_KEYS: set[str] = {
     "P055",
@@ -39,6 +41,12 @@ DISABLED_BY_DEFAULT_KEYS: set[str] = {
     "P068",
     "P075",
     "P076",
+    "P638",
+    "P639",
+    "P651",
+    "L005", "L006", "L007", "L008", "L009", "L010",
+    "L011", "L012", "L013", "L014", "L015", "L016",
+    "L017", "L018", "L074", "P647", "P648",
 }
 
 SENSORS: tuple[SensorEntityDescription, ...] = (
@@ -262,6 +270,27 @@ REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
         device_class=SensorDeviceClass.ENERGY,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         state_class=SensorStateClass.TOTAL_INCREASING,
+    ),
+    "P088": _register_description(
+        key="P088",
+        name="Battery Capacity",
+        device_class=SensorDeviceClass.ENERGY,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "P237": _register_description(
+        key="P237",
+        name="AC Coupled PV Power",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "P644": _register_description(
+        key="P644",
+        name="Grid Power",
+        device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        state_class=SensorStateClass.MEASUREMENT,
     ),
 }
 
