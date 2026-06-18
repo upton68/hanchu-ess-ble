@@ -126,6 +126,7 @@ class HanchuBleClient:
         self.name = name
         self._session = HanchuBleSession()
         self._notification_queue: asyncio.Queue[bytes] = asyncio.Queue()
+        self._connection_lock = asyncio.Lock()
 
     async def async_read_values(
         self,
@@ -134,6 +135,16 @@ class HanchuBleClient:
         encrypted: bool = True,
     ) -> HanchuReply:
         """Connect to the inverter, read values, then disconnect."""
+        async with self._connection_lock:
+            return await self._async_read_values_locked(keys, encrypted=encrypted)
+
+    async def _async_read_values_locked(
+        self,
+        keys: list[str],
+        *,
+        encrypted: bool = True,
+    ) -> HanchuReply:
+        """Body of async_read_values, run while holding the connection lock."""
         _LOGGER.debug(
             "Starting Hanchu BLE read address=%s keys=%s encrypted=%s",
             self.address,
@@ -199,6 +210,17 @@ class HanchuBleClient:
         encrypted: bool = True,
     ) -> HanchuReply:
         """Connect to the inverter, write a single value, then disconnect."""
+        async with self._connection_lock:
+            return await self._async_write_value_locked(key, value, encrypted=encrypted)
+
+    async def _async_write_value_locked(
+        self,
+        key: str,
+        value,
+        *,
+        encrypted: bool = True,
+    ) -> HanchuReply:
+        """Body of async_write_value, run while holding the connection lock."""
         _LOGGER.debug(
             "Starting Hanchu BLE write address=%s key=%s value=%s encrypted=%s",
             self.address,
@@ -253,6 +275,8 @@ class HanchuBleClient:
             await self._async_stop_notify(client)
             await client.disconnect()
             _LOGGER.debug("Disconnected from Hanchu inverter address=%s", self.address)
+
+    
 
     async def _async_start_notify(self, client: BleakClient) -> None:
         """Start notifications on the inverter read characteristic."""
