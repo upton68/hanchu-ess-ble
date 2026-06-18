@@ -393,7 +393,7 @@ class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
 
         return value
         
- class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
+class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
     """Derived house load power sensor — Grid + AC PV + Battery."""
 
     _attr_name = "Load Power"
