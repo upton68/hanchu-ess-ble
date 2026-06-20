@@ -301,6 +301,11 @@ REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
         native_unit_of_measurement=UnitOfPower.WATT,
         state_class=SensorStateClass.MEASUREMENT,
     ),
+    "L023": _register_description(
+        key="L023",
+        name="DTU Firmware Version",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
 }
 
 
