@@ -1,7 +1,7 @@
 {
   "domain": "hanchu_ess_ble",
   "name": "Hanchu ESS BLE",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "documentation": "https://github.com/upton68/hanchu-ess-ble",
   "integration_type": "device",
   "requirements": ["pycryptodome==3.20.0"],
