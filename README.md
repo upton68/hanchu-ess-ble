@@ -19,6 +19,7 @@ This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com
 - **Charge/Discharge Power Limits**: set maximum charge and discharge power in Watts
 - **SOC controls**: Maximum Charge SOC, Minimum Discharge SOC (on-grid), Grid to Battery Charge Maximum
 - **Time slot scheduling**: full control of all six charge and discharge time periods (User-defined mode)
+- **Tiered polling**: real-time sensors update every 30 seconds; static values (firmware versions, hardware config) rotate through on a slower schedule, reducing BLE load
 - **Fully local**: no cloud dependency — works even if the Hanchu cloud is unavailable
 
 ---
@@ -27,7 +28,7 @@ This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com
 
 - A Hanchu iESS battery storage system with a compatible inverter
 - Home Assistant with Bluetooth support, or a Bluetooth proxy
-- A Bluetooth proxy is strongly recommended for reliable connectivity — tested with the **M5Stack Atom Lite** running ESPHome's Bluetooth proxy firmware, placed within range of the inverter
+- A Bluetooth proxy is **strongly recommended** for reliable connectivity — onboard Bluetooth on HA hardware has been reported as unreliable with this integration across multiple setups. Tested with the **M5Stack Atom Lite** running ESPHome's Bluetooth proxy firmware, placed within range of the inverter (available from The Pi Hut for around £10)
 
 ---
 
@@ -93,6 +94,18 @@ Battery Voltage, Battery Current, Active Power, Reactive Power, Power Factor, Ba
 
 ---
 
+## Polling
+
+Registers are split into two tiers to reduce BLE load on the inverter:
+
+**Fast poll (every 30 seconds)** — real-time values: power flows, battery SOC, voltage, current, temperature, grid readings, work mode, charge/discharge slots and limits.
+
+**Slow poll (rotating)** — static or rarely-changing values: Main, Safety, ARM, and DTU firmware versions, Inverter Power Limit, Battery Capacity, and Meter Type. One slow register is requested per cycle, so each is refreshed approximately every 3.5 minutes.
+
+Slow poll values persist their last known reading between updates — sensors will not show as unavailable simply because a slow register was not included in the current cycle.
+
+---
+
 ## Known Limitations
 
 - **Daily grid import/export energy** — not available over the local BLE protocol on tested hardware/firmware. The official app shows these figures, but the corresponding BLE keys were not found to return data despite exhaustive testing.
@@ -115,6 +128,7 @@ For a comprehensive mapping of all known P/L-codes, see the [protocol mapping re
 
 - **[Blustery7752](https://github.com/Blustery7752/hanchu-ess-ble)** — original `hanchu-ess-ble` Home Assistant integration, which provided the BLE connection, encryption, and read foundation this fork builds on
 - **[1ulk](https://github.com/1ulk/1ulk.github.io)** — browser-based Hanchu BLE Controller, whose `hanchu-params.js` parameter registry and `hanchu-controller.js` write implementation were essential references for the write protocol and P/L-code mappings
+- **PaulDGAL** — real-world testing and community feedback that identified BLE load as the root cause of sensor unavailability issues, and proposed the tiered polling approach and the sensor value persistence improvement that became v1.0.2
 
 ---
 
