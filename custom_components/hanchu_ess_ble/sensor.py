@@ -23,7 +23,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DEFAULT_POLL_KEYS, DOMAIN
+from .const import FAST_POLL_KEYS, SLOW_POLL_KEYS, DOMAIN
 from .coordinator import HanchuBleCoordinator
 from .entity import HanchuCoordinatorEntity
 
@@ -316,6 +316,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up Hanchu sensors from a config entry."""
     coordinator: HanchuBleCoordinator = hass.data[DOMAIN][entry.entry_id]
+
+    # Combine fast and slow poll keys, deduplicated, preserving order.
+    all_register_keys: tuple[str, ...] = FAST_POLL_KEYS + tuple(
+        k for k in SLOW_POLL_KEYS if k not in FAST_POLL_KEYS
+    )
+
     entities: list[SensorEntity] = [
         *(HanchuDiagnosticSensor(coordinator, description) for description in SENSORS),
         HanchuLoadPowerSensor(coordinator),
@@ -332,7 +338,7 @@ async def async_setup_entry(
                     ),
                 ),
             )
-            for register_key in DEFAULT_POLL_KEYS
+            for register_key in all_register_keys
         ),
     ]
     async_add_entities(entities)
@@ -433,3 +439,4 @@ class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
             return round(grid + pv + battery, 1)
         except (ValueError, TypeError):
             return None
+            
