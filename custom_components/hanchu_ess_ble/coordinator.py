@@ -20,6 +20,7 @@ from .const import (
     CONF_DEVICE_NAME,
     DEFAULT_NAME,
     DEFAULT_POLL_KEYS,
+    REGISTER_INTERLACE_SLOTS,
     DOMAIN,
     SCAN_INTERVAL,
 )
@@ -41,6 +42,7 @@ class HanchuCoordinatorData:
     manufacturer_data: dict[int, bytes] | None = None
     service_data: dict[str, bytes] | None = None
     values: dict[str, Any] | None = None
+    last_updated: dict[str, datetime] | None = None
 
 
 class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
@@ -48,11 +50,12 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialise the coordinator."""
+        self._slot_counter = 0
         self.hass = hass
         self.entry = entry
         self.address: str = entry.data[CONF_ADDRESS]
         self.configured_name: str = entry.data.get(CONF_DEVICE_NAME, DEFAULT_NAME)
-        self.poll_keys = list(DEFAULT_POLL_KEYS)
+        #self.poll_keys = list(DEFAULT_POLL_KEYS)
         self.client = HanchuBleClient(hass, self.address, self.configured_name)
         self._unsubscribe_bluetooth: CALLBACK_TYPE | None = None
         self._unsubscribe_unavailable: CALLBACK_TYPE | None = None
@@ -63,6 +66,19 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
             name=f"{DOMAIN}_{self.address}",
             update_interval=SCAN_INTERVAL,
         )
+        
+    def _select_interlaced_registers(self) -> list[str]:
+        """Return the registers to poll this cycle using interlaced slots."""
+        slot = REGISTER_INTERLACE_SLOTS[self._slot_counter % len(REGISTER_INTERLACE_SLOTS)]
+        self._slot_counter += 1
+
+        # Fast registers = DEFAULT_POLL_KEYS minus all interlaced registers
+        interlaced_all = {reg for slot in REGISTER_INTERLACE_SLOTS for reg in slot}
+        fast_registers = [reg for reg in DEFAULT_POLL_KEYS if reg not in interlaced_all]
+
+        # Final list = fast registers + this cycle's slot
+        return fast_registers + slot
+
 
     async def async_setup(self) -> None:
         """Register Bluetooth listeners after the first refresh."""
@@ -121,7 +137,8 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
 
         snapshot = snapshot_from_service_info(service_info)
         try:
-            reply = await self.client.async_read_values(self.poll_keys, encrypted=True)
+            keys = self._select_interlaced_registers()
+            reply = await self.client.async_read_values(keys, encrypted=True)
         except Exception as err:
             _LOGGER.debug(
                 "Failed Hanchu coordinator refresh for address=%s",
@@ -180,8 +197,25 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         *,
         is_present: bool,
         values: dict[str, Any] | None = None,
-    ) -> HanchuCoordinatorData:
-        """Convert BLE data into coordinator state."""
+        ) -> HanchuCoordinatorData:
+        """Convert BLE data into coordinator state with merged values and timestamps."""
+
+        # --- Merge register values ---
+        if values is not None:
+            merged_values = dict(self.data.values) if self.data and self.data.values else {}
+            merged_values.update(values)
+        else:
+            merged_values = self.data.values if self.data else None
+
+        # --- Merge timestamps ---
+        now = datetime.utcnow()
+        if values is not None:
+            merged_ts = dict(self.data.last_updated) if self.data and self.data.last_updated else {}
+            for key in values:
+                merged_ts[key] = now
+        else:
+            merged_ts = self.data.last_updated if self.data else None
+
         return HanchuCoordinatorData(
             address=snapshot.address,
             configured_name=self.configured_name,
@@ -192,5 +226,6 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
             is_present=is_present,
             manufacturer_data=snapshot.manufacturer_data,
             service_data=snapshot.service_data,
-            values=values if values is not None else (self.data.values if self.data else None),
+            values=merged_values,
+            last_updated=merged_ts,
         )
