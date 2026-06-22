@@ -19,7 +19,8 @@ from .const import (
     CONF_ADDRESS,
     CONF_DEVICE_NAME,
     DEFAULT_NAME,
-    DEFAULT_POLL_KEYS,
+    FAST_POLL_KEYS,
+    SLOW_POLL_KEYS,
     DOMAIN,
     SCAN_INTERVAL,
 )
@@ -41,6 +42,7 @@ class HanchuCoordinatorData:
     manufacturer_data: dict[int, bytes] | None = None
     service_data: dict[str, bytes] | None = None
     values: dict[str, Any] | None = None
+    last_updated: dict[str, datetime] | None = None
 
 
 class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
@@ -52,10 +54,12 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         self.entry = entry
         self.address: str = entry.data[CONF_ADDRESS]
         self.configured_name: str = entry.data.get(CONF_DEVICE_NAME, DEFAULT_NAME)
-        self.poll_keys = list(DEFAULT_POLL_KEYS)
         self.client = HanchuBleClient(hass, self.address, self.configured_name)
         self._unsubscribe_bluetooth: CALLBACK_TYPE | None = None
         self._unsubscribe_unavailable: CALLBACK_TYPE | None = None
+        # Tracks which SLOW_POLL_KEYS entry to request this cycle.
+        # Advances by one each cycle, wrapping at len(SLOW_POLL_KEYS).
+        self._slow_poll_index: int = 0
 
         super().__init__(
             hass,
@@ -114,14 +118,24 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
                     manufacturer_data=self.data.manufacturer_data,
                     service_data=self.data.service_data,
                     values=self.data.values,
+                    last_updated=self.data.last_updated,
                 )
             raise ConfigEntryNotReady(
                 f"No BLE advertisements seen yet for configured address {self.address}"
             )
 
+        # Build the key list for this cycle: all fast keys plus one slow key.
+        slow_key = SLOW_POLL_KEYS[self._slow_poll_index]
+        poll_keys = list(FAST_POLL_KEYS) + [slow_key]
+        _LOGGER.debug(
+            "Cycle slow_poll_index=%d polling slow key=%s",
+            self._slow_poll_index,
+            slow_key,
+        )
+
         snapshot = snapshot_from_service_info(service_info)
         try:
-            reply = await self.client.async_read_values(self.poll_keys, encrypted=True)
+            reply = await self.client.async_read_values(poll_keys, encrypted=True)
         except Exception as err:
             _LOGGER.debug(
                 "Failed Hanchu coordinator refresh for address=%s",
@@ -129,6 +143,9 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
                 exc_info=True,
             )
             raise UpdateFailed(f"Failed to read inverter values: {err}") from err
+
+        # Advance the slow poll index, wrapping at the end of the list.
+        self._slow_poll_index = (self._slow_poll_index + 1) % len(SLOW_POLL_KEYS)
 
         _LOGGER.debug(
             "Hanchu coordinator refresh succeeded for address=%s values=%s",
@@ -171,6 +188,7 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
                 manufacturer_data=self.data.manufacturer_data,
                 service_data=self.data.service_data,
                 values=self.data.values,
+                last_updated=self.data.last_updated,
             )
         )
 
@@ -181,7 +199,32 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         is_present: bool,
         values: dict[str, Any] | None = None,
     ) -> HanchuCoordinatorData:
-        """Convert BLE data into coordinator state."""
+        """Convert BLE data into coordinator state with merged values and timestamps.
+
+        Rather than replacing the full values dict each cycle, new values are
+        merged into the previous state. This means registers not polled this
+        cycle (i.e. slow-tier keys) retain their last good value rather than
+        becoming None or unavailable. Timestamps are only updated for keys
+        that actually returned a value this cycle.
+        """
+        # Merge register values into previous state so unpollled keys persist.
+        if values is not None:
+            merged_values = dict(self.data.values) if self.data and self.data.values else {}
+            merged_values.update(values)
+        else:
+            merged_values = self.data.values if self.data else None
+
+        # Update timestamps only for keys returned this cycle.
+        now = datetime.utcnow()
+        if values is not None:
+            merged_ts: dict[str, datetime] = (
+                dict(self.data.last_updated) if self.data and self.data.last_updated else {}
+            )
+            for key in values:
+                merged_ts[key] = now
+        else:
+            merged_ts = self.data.last_updated if self.data else None
+
         return HanchuCoordinatorData(
             address=snapshot.address,
             configured_name=self.configured_name,
@@ -192,5 +235,7 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
             is_present=is_present,
             manufacturer_data=snapshot.manufacturer_data,
             service_data=snapshot.service_data,
-            values=values if values is not None else (self.data.values if self.data else None),
+            values=merged_values,
+            last_updated=merged_ts,
         )
+        
