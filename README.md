@@ -113,7 +113,7 @@ Slow poll values persist their last known reading between updates — sensors wi
 ## Known Limitations
 
 - **Daily grid import/export energy** — not available over the local BLE protocol on tested hardware/firmware. The official app shows these figures, but the corresponding BLE keys were not found to return data despite exhaustive testing.
-- **AC Coupled PV Power** — may show a small negative value (a few watts) at low light or when the AC-coupled inverter is in standby. This is normal and reflects the actual power flow at the AC coupling point, not a sensor error.
+- **AC Coupled PV Power** — the sign convention of P237 varies between hardware and firmware versions. Some systems return a positive value when generating, others return negative. The raw sensor reflects whatever the inverter reports. The derived Load Power sensor uses the absolute value of P237 so it calculates correctly regardless of which convention your system uses.
 - **Fast charge/discharge** — not available locally. This feature appears to be cloud-only on tested hardware.
 - **DC-coupled PV sensors** (PV1/PV2 Voltage/Current, PV Total Power) — will read zero on AC-coupled systems where solar is connected via a separate inverter rather than directly into the Hanchu's DC inputs.
 - **This integration is not supported by Hanchu.** It was developed independently by reverse-engineering the local BLE protocol.
