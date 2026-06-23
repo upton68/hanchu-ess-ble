@@ -431,11 +431,16 @@ class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return house load = Grid Power + AC PV + Battery Power."""
+        """Return house load = Grid Power + AC PV + Battery Power.
+
+        AC Coupled PV power (P237) sign convention varies between hardware/firmware
+        versions — some return positive when generating, others negative. abs() is
+        used so the Load Power calculation is correct regardless of convention.
+        """
         values = self.coordinator.data.values or {}
         try:
             grid = float(values.get("P644") or 0)
-            pv = float(values.get("P237") or 0)
+            pv = abs(float(values.get("P237") or 0))
             battery = float(values.get("P069") or 0)
             return round(grid + pv + battery, 1)
         except (ValueError, TypeError):
