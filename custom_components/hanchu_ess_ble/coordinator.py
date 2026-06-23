@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -43,6 +44,10 @@ class HanchuCoordinatorData:
     service_data: dict[str, bytes] | None = None
     values: dict[str, Any] | None = None
     last_updated: dict[str, datetime] | None = None
+    # BLE diagnostic fields
+    last_successful_read: datetime | None = None
+    consecutive_failures: int = 0
+    last_cycle_duration: float | None = None
 
 
 class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
@@ -60,6 +65,8 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         # Tracks which SLOW_POLL_KEYS entry to request this cycle.
         # Advances by one each cycle, wrapping at len(SLOW_POLL_KEYS).
         self._slow_poll_index: int = 0
+        # Running failure count — reset on each successful read.
+        self._consecutive_failures: int = 0
 
         super().__init__(
             hass,
@@ -119,6 +126,9 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
                     service_data=self.data.service_data,
                     values=self.data.values,
                     last_updated=self.data.last_updated,
+                    last_successful_read=self.data.last_successful_read,
+                    consecutive_failures=self.data.consecutive_failures,
+                    last_cycle_duration=self.data.last_cycle_duration,
                 )
             raise ConfigEntryNotReady(
                 f"No BLE advertisements seen yet for configured address {self.address}"
@@ -134,28 +144,39 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         )
 
         snapshot = snapshot_from_service_info(service_info)
+        cycle_start = time.monotonic()
         try:
             reply = await self.client.async_read_values(poll_keys, encrypted=True)
         except Exception as err:
+            self._consecutive_failures += 1
             _LOGGER.debug(
-                "Failed Hanchu coordinator refresh for address=%s",
+                "Failed Hanchu coordinator refresh for address=%s (consecutive failures=%d)",
                 self.address,
+                self._consecutive_failures,
                 exc_info=True,
             )
+            # Carry forward existing diagnostic values, updating failure count.
             raise UpdateFailed(f"Failed to read inverter values: {err}") from err
 
-        # Advance the slow poll index, wrapping at the end of the list.
+        cycle_duration = round(time.monotonic() - cycle_start, 2)
+
+        # Successful read — reset failure counter and advance slow poll index.
+        self._consecutive_failures = 0
         self._slow_poll_index = (self._slow_poll_index + 1) % len(SLOW_POLL_KEYS)
 
         _LOGGER.debug(
-            "Hanchu coordinator refresh succeeded for address=%s values=%s",
+            "Hanchu coordinator refresh succeeded for address=%s duration=%.2fs values=%s",
             self.address,
+            cycle_duration,
             reply.as_dict(),
         )
         return self._build_data(
             snapshot,
             is_present=True,
             values=reply.as_dict(),
+            last_successful_read=datetime.utcnow(),
+            consecutive_failures=0,
+            last_cycle_duration=cycle_duration,
         )
 
     @callback
@@ -189,6 +210,9 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
                 service_data=self.data.service_data,
                 values=self.data.values,
                 last_updated=self.data.last_updated,
+                last_successful_read=self.data.last_successful_read,
+                consecutive_failures=self.data.consecutive_failures,
+                last_cycle_duration=self.data.last_cycle_duration,
             )
         )
 
@@ -198,6 +222,9 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         *,
         is_present: bool,
         values: dict[str, Any] | None = None,
+        last_successful_read: datetime | None = None,
+        consecutive_failures: int | None = None,
+        last_cycle_duration: float | None = None,
     ) -> HanchuCoordinatorData:
         """Convert BLE data into coordinator state with merged values and timestamps.
 
@@ -207,7 +234,7 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         becoming None or unavailable. Timestamps are only updated for keys
         that actually returned a value this cycle.
         """
-        # Merge register values into previous state so unpollled keys persist.
+        # Merge register values into previous state so unpolled keys persist.
         if values is not None:
             merged_values = dict(self.data.values) if self.data and self.data.values else {}
             merged_values.update(values)
@@ -237,5 +264,20 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
             service_data=snapshot.service_data,
             values=merged_values,
             last_updated=merged_ts,
+            last_successful_read=(
+                last_successful_read
+                if last_successful_read is not None
+                else (self.data.last_successful_read if self.data else None)
+            ),
+            consecutive_failures=(
+                consecutive_failures
+                if consecutive_failures is not None
+                else (self.data.consecutive_failures if self.data else 0)
+            ),
+            last_cycle_duration=(
+                last_cycle_duration
+                if last_cycle_duration is not None
+                else (self.data.last_cycle_duration if self.data else None)
+            ),
         )
         
