@@ -324,6 +324,7 @@ async def async_setup_entry(
 
     entities: list[SensorEntity] = [
         *(HanchuDiagnosticSensor(coordinator, description) for description in SENSORS),
+        *(HanchuBleDiagnosticSensor(coordinator, description) for description in DIAGNOSTIC_BLE_SENSORS),
         HanchuLoadPowerSensor(coordinator),
         *(
             HanchuRegisterSensor(
@@ -439,4 +440,54 @@ class HanchuLoadPowerSensor(HanchuCoordinatorEntity, SensorEntity):
             return round(grid + pv + battery, 1)
         except (ValueError, TypeError):
             return None
-            
+
+# ---------------------------------------------------------------------------
+# Diagnostic sensors — BLE polling health
+# ---------------------------------------------------------------------------
+
+DIAGNOSTIC_BLE_SENSORS: tuple[SensorEntityDescription, ...] = (
+    SensorEntityDescription(
+        key="last_successful_read",
+        name="Last Successful BLE Read",
+        icon="mdi:bluetooth-connect",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="consecutive_failures",
+        name="Consecutive BLE Failures",
+        icon="mdi:bluetooth-off",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    SensorEntityDescription(
+        key="last_cycle_duration",
+        name="Last BLE Cycle Duration",
+        icon="mdi:timer-outline",
+        native_unit_of_measurement="s",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+)
+
+
+class HanchuBleDiagnosticSensor(HanchuCoordinatorEntity, SensorEntity):
+    """BLE polling health diagnostic sensor."""
+
+    entity_description: SensorEntityDescription
+
+    def __init__(
+        self,
+        coordinator: HanchuBleCoordinator,
+        description: SensorEntityDescription,
+    ) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{coordinator.address}_{description.key}"
+
+    @property
+    def native_value(self):
+        """Return the diagnostic value from coordinator data."""
+        return getattr(self.coordinator.data, self.entity_description.key, None)
+        
