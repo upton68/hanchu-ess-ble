@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.components import bluetooth
@@ -174,7 +174,7 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
             snapshot,
             is_present=True,
             values=reply.as_dict(),
-            last_successful_read=datetime.utcnow(),
+            last_successful_read=datetime.now(timezone.utc),
             consecutive_failures=0,
             last_cycle_duration=cycle_duration,
         )
@@ -242,7 +242,7 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
             merged_values = self.data.values if self.data else None
 
         # Update timestamps only for keys returned this cycle.
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if values is not None:
             merged_ts: dict[str, datetime] = (
                 dict(self.data.last_updated) if self.data and self.data.last_updated else {}
