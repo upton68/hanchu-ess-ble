@@ -104,6 +104,10 @@ Registers are split into two tiers to reduce BLE load on the inverter:
 
 Slow poll values persist their last known reading between updates — sensors will not show as unavailable simply because a slow register was not included in the current cycle.
 
+**Startup behaviour** — after a restart, slow-tier sensors will show as unavailable for the first few minutes while the rotation works through all seven slow keys for the first time (~3.5 minutes at the default interval). This is expected and not a sign of a problem.
+
+**Cycle duration variation** — BLE read times can vary between cycles (typically 6–17 seconds has been observed). This is believed to be partly caused by the inverter handling cloud polling requests simultaneously, which occasionally delays its BLE response. Value persistence means this variation does not cause sensors to go unavailable.
+
 ---
 
 ## Known Limitations
