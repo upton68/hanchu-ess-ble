@@ -73,7 +73,7 @@ These were discovered during live testing and are critical for correct operation
 | P088 | Battery Capacity | Rated capacity | Ah | Convert to kWh via `Ah × 51.2 / 1000` (integration applies ×0.0512 scale factor) |
 | P139 | ARM Firmware Version | | | |
 | P142 | Battery Pack Count | | | |
-| **P237** | **AC Coupled PV Power** | **Live AC-coupled solar power** | **W** | **Confirmed live. May show small negative values at low light/standby — this is normal** |
+| **P237** | **AC Coupled PV Power** | **Live AC-coupled solar power** | **W** | **Sign convention varies between hardware/firmware versions — some return positive when generating, others negative. The integration uses `abs()` in the Load Power calculation to handle both conventions correctly.** |
 | **P644** | **Grid Power** | **Live grid import/export** | **W** | **Confirmed live. Positive = importing, negative = exporting** |
 | L023 | DTU Firmware Version | | | e.g. 1.9.0 |
 | L034 | Meter Type / CT Meter Version | 0 = no meter, 3 = specific supported meter | | |
@@ -107,6 +107,19 @@ All writes use `act: "3"` with a plain integer value.
 | L016 | Discharge Period 3 End | Seconds from midnight; 0 = disabled | s |
 | P236 | Meter PV Enable | 0 = off, 1 = on | |
 | P245 | Meter PV Direction | 0 = import, 1 = export | |
+
+---
+
+## Documented But Not Implemented
+
+Codes identified in the 1ulk `hanchu-params.js` registry but not currently exposed as entities. Recorded here for future reference.
+
+| Code | Name | Description | Notes |
+|---|---|---|---|
+| L020 | Timezone | IANA timezone code for the DTU | e.g. "Europe/London" — write only, relevant only for DTU clock sync |
+| L021 | Clear WiFi Password | Write trigger to clear stored WiFi credentials | Write only — not suitable as a polled sensor |
+| L094 | Unix Timestamp | Current Unix epoch timestamp set on the DTU | Could be used to verify DTU clock accuracy |
+| L096 | Timezone Offset | UTC offset in hours (timeZoneOffsetActCode) | Read counterpart to L020 |
 
 ---
 
@@ -148,7 +161,7 @@ Tested via live BLE reads but purpose unconfirmed:
 
 | Sensor | Formula | Notes |
 |---|---|---|
-| Load Power | `P644 + P237 + P069` (raw values) | All three are positive when feeding the house. P069 raw is positive=discharging, so no sign flip needed in the formula |
+| Load Power | `P644 + abs(P237) + P069` (raw values) | `abs()` applied to P237 to handle sign convention variation between hardware/firmware versions |
 | Battery Capacity (kWh) | `P088 × 0.0512` | P088 in Ah × 51.2V nominal / 1000 |
 | Battery SOC (%) | `P071 × 100` | P071 is a decimal fraction e.g. 0.67 = 67% |
 | Battery Power (cloud convention) | `P069 × -1` | Inverts to positive=charging to match cloud convention |
@@ -159,4 +172,5 @@ Tested via live BLE reads but purpose unconfirmed:
 
 - **[Blustery7752](https://github.com/Blustery7752/hanchu-ess-ble)** — original `hanchu-ess-ble` integration providing the BLE connection, encryption, and read foundation
 - **[1ulk](https://github.com/1ulk/1ulk.github.io)** — Hanchu BLE Controller web app whose `hanchu-params.js` parameter registry and `hanchu-controller.js` write implementation were essential references
+- **PaulDGAL** — real-world testing identifying BLE load and sign convention issues, and proposing the tiered polling approach
 - 
