@@ -108,7 +108,13 @@ class HanchuBleTimeSlot(CoordinatorEntity, TimeEntity):
                     self._config["key"], seconds, encrypted=True
                 )
             except Exception as err:
-                _LOGGER.error("Failed to set %s: %s", self._config["name"], err)
+                _LOGGER.error(
+                    "Failed to set %s: %s — reverting to last known device value",
+                    self._config["name"],
+                    err,
+                )
+                self._pending_value = None
+                self.async_write_ha_state()
                 return
 
             result = reply.as_dict().get(self._config["key"])
@@ -118,9 +124,11 @@ class HanchuBleTimeSlot(CoordinatorEntity, TimeEntity):
                 await self.coordinator.async_request_refresh()
             else:
                 _LOGGER.error(
-                    "%s write did not confirm success: %s",
+                    "%s write did not confirm success: %s — reverting to last known device value",
                     self._config["name"],
                     reply.as_dict(),
                 )
+                self._pending_value = None
+                self.async_write_ha_state()
         except asyncio.CancelledError:
             pass
