@@ -12,7 +12,6 @@ CONF_DISCOVERED_ADDRESS = "discovered_address"
 
 DEFAULT_NAME = "Hanchu ESS"
 DEFAULT_SCAN_INTERVAL_SECONDS = 30
-MAX_CONSECUTIVE_FAILURES = 3
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SELECT, Platform.NUMBER, Platform.TIME]
 SCAN_INTERVAL = timedelta(seconds=DEFAULT_SCAN_INTERVAL_SECONDS)
@@ -113,6 +112,10 @@ SLOW_POLL_KEYS: tuple[str, ...] = (
     "P005",  # Inverter Power Limit
     "P088",  # Battery Capacity (Ah)
     "L034",  # Meter Type
+    # Inverter RTC - currently for diagnostics
+    "L020",  # Timezone
+    "L094",  # Time (UNIX Epoch - seconds since 1 January 1970)
+    "L096",  # Daylight Savings Time (in Minutes)
 )
 
 # The coordinator advances through SLOW_POLL_KEYS one entry per scan cycle,
