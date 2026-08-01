@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-01
+
+### Added
+Battery pack support. Individual battery packs can now be configured and polled independently of the inverter, each showing up as its own separate device in Home Assistant with its own sensors:
+Battery SoC, Pack Voltage, Battery Temperature, Environmental Temperature, PCBA Temperature, Battery Current
+Serial Number, Hardware Version, Model, and Firmware Version (diagnostic category)
+The same BLE polling health diagnostics (Last Successful Read, Consecutive Failures, Cycle Duration) already available for the inverter
+Battery packs are configured via a new Options flow (Settings → Devices & Services → the integration → Configure), where any discovered battery loggers (device names beginning HC:L101) can be selected. None are polled by default — this is fully opt-in.
+Battery polling runs on its own 300-second interval, independently of the inverter's fast poll cycle, with the same consecutive-failure tolerance pattern used for the inverter — a battery BLE issue cannot affect inverter sensor availability, and issues with one battery cannot affect another.
+### Changed
+Added explicit display precision to the new battery voltage/current/temperature/SoC sensors, since Home Assistant's automatic precision detection can lock in at 0 decimal places if an entity's earliest readings happen to look like whole numbers.
+### Notes
+Battery packs must be visible to the same Bluetooth proxy already polling your inverter. As with the inverter itself, an M5Stack Atom Lite running ESPHome's Bluetooth proxy firmware is the only setup verified reliable for this integration — other Bluetooth sources may not connect to the battery packs reliably even if they can see the inverter.
+Confirmed working against real hardware: two battery packs polled successfully in parallel with the inverter, with live SoC/voltage/current/temperature tracking correctly against the official app's own readings.
+
 ## [1.0.11] - 2026-07-07
 
 ### Changed
@@ -125,7 +140,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.0.11...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.0.11...v1.1.0
 [1.0.11]: https://github.com/upton68/hanchu-ess-ble/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/upton68/hanchu-ess-ble/compare/v1.0.9...v1.0.10
 [1.0.9]: https://github.com/upton68/hanchu-ess-ble/compare/v1.0.8...v1.0.9  
