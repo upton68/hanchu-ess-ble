@@ -216,3 +216,59 @@ REGISTER_INFO: dict[str, str] = {
     "L094": "RTC Unix Epoch Timestamp",
     "L096": "RTC Daylight Saving Offset",
 }
+
+# ---------------------------------------------------------------------------
+# Battery (per-pack) support — appended for battery BLE polling
+# ---------------------------------------------------------------------------
+
+CONF_BATTERY_ADDRESSES = "battery_addresses"
+
+BATTERY_NAME_PREFIXES: tuple[str, ...] = (
+    "HC:L101",
+)
+
+DEFAULT_BATTERY_SCAN_INTERVAL_SECONDS = 300
+BATTERY_SCAN_INTERVAL = timedelta(seconds=DEFAULT_BATTERY_SCAN_INTERVAL_SECONDS)
+
+MODEL_BATTERY = "ESS Battery (BLE)"
+
+# All battery values are cheap enough (10 keys, single connection, verified
+# against real hardware) to read in one request every cycle — no fast/slow
+# tiering needed like the inverter. Static fields (serial/HW/model/firmware)
+# are still only meaningfully read once at startup by the coordinator, since
+# they never change, but there's no harm re-requesting them each slow cycle
+# given the low request count.
+BATTERY_POLL_KEYS: tuple[str, ...] = (
+    "B002",  # Battery Serial Number
+    "B034",  # BMS State of Charge
+    "B035",  # Battery Pack Voltage
+    "B038",  # Environmental Temperature
+    "B039",  # Battery Temperature
+    "B040",  # PCBA Temperature
+    "B043",  # Battery Current
+    "B145",  # Hardware Version
+    "B146",  # Battery Model
+    "B148",  # Firmware Version
+)
+
+# Fields that only need to be read once at setup and then cached, rather than
+# re-requested every cycle — they're static per battery.
+BATTERY_STATIC_KEYS: tuple[str, ...] = (
+    "B002",
+    "B145",
+    "B146",
+    "B148",
+)
+
+BATTERY_REGISTER_INFO: dict[str, str] = {
+    "B002": "Battery Serial Number",
+    "B034": "Battery SoC",
+    "B035": "Battery Pack Voltage",
+    "B038": "Environmental Temperature",
+    "B039": "Battery Temperature",
+    "B040": "PCBA Temperature",
+    "B043": "Battery Current",
+    "B145": "Hardware Version",
+    "B146": "Battery Model",
+    "B148": "Firmware Version",
+}
