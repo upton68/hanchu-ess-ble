@@ -1,6 +1,6 @@
 # Hanchu iESS Local BLE Protocol — Parameter Mapping Reference
 
-Status as of July 2026. Compiled from: the `hanchu_ess_ble` fork's live BLE reads/writes (HA Green + M5Stack Atom Lite BLE proxy), the [1ulk Hanchu BLE Controller](https://github.com/1ulk/1ulk.github.io) (`hanchu-params.js` / `hanchu-controller.js`), and cross-referencing against the Hanchu cloud app and a working cloud-based HA integration.
+Status as of August 2026. Compiled from: the `hanchu_ess_ble` fork's live BLE reads/writes (HA Green + M5Stack Atom Lite BLE proxy), the [1ulk Hanchu BLE Controller](https://github.com/1ulk/1ulk.github.io) (`hanchu-params.js` / `hanchu-controller.js`), and cross-referencing against the Hanchu cloud app and a working cloud-based HA integration.
 
 **Scope note:** this document maps every code investigated, including many not exposed as entities by default. The integration's built entities mirror the common cloud integration entity list. Everything else here is a reference for anyone wanting to expose additional codes using the same `async_read_values()` / `async_write_value()` pattern.
 
@@ -13,6 +13,7 @@ Status as of July 2026. Compiled from: the `hanchu_ess_ble` fork's live BLE read
 - **Handshake:** byte `0x05` + 6-char ASCII token, sent unencrypted to the write characteristic. Device acks with a `0x05 0x00`-prefixed packet.
 - **Read command:** `{"act":"1","cmd":"local","data":[{"k":key}...],"tid":"10001"}`, AES-encrypted, written to the write characteristic. Response arrives via notifications, possibly split across multiple packets, reassembled and decrypted.
 - **Write command:** `{"act":"3","cmd":"local","data":[{"k":key,"v":value}],"tid":"10001"}`. Values must be plain integers, not strings. Successful write replies with `{"<key>": 0}` (0 = success acknowledgement).
+- **Per-device addressing:** the inverter and each individual battery pack are separate BLE peripherals, each with their own advertised name and address — not sub-nodes reached through a single connection. Device type is identifiable directly from the advertised name: inverter loggers begin `HC:L110`, battery pack loggers begin `HC:L101`. The same handshake/encryption/read protocol works identically against either — connect to the specific pack's own address and the same `{"act":"1",...}` read command structure applies, just requesting B-codes instead of P/L-codes.
 
 ---
 
@@ -81,6 +82,27 @@ These were discovered during live testing and are critical for correct operation
 | L020 | Timezone | IANA timezone code reported by the DTU | | Confirmed readable — e.g. "Europe/London". Earlier notes assumed write-only; live testing (v1.0.10) confirmed it also returns correctly on read |
 | L094 | RTC Unix Epoch Timestamp | Current Unix epoch time as reported by the DTU's onboard RTC | s (epoch) | Confirmed matches real-world time within normal poll-cycle drift. Exposed as `SensorDeviceClass.TIMESTAMP` via `datetime.fromtimestamp(value, tz=timezone.utc)` — raw integer alone displays as a meaningless incrementing number if not converted |
 | L096 | RTC Daylight Saving Offset | DST offset as reported by the DTU | min | **Correction to original hypothesis** — earlier notes assumed hours; live testing (v1.0.10) confirmed the value is in **minutes** (60 during BST, expected 0 during GMT), consistent with a standard one-hour DST shift |
+
+---
+
+## Confirmed Battery Pack (B-code) Registers
+
+Unlike P/L-codes, which are read from the inverter's own BLE connection, B-codes are read directly from an individual battery pack's own BLE address — see the per-device addressing note above. Confirmed working against real hardware in v1.1.0; identified from the 1ulk `hanchu-params.js` registry, which documents these but never wires them up (the reference implementation only ever polls the inverter).
+
+| Code | Name | Description | Unit | Notes |
+|---|---|---|---|---|
+| B002 | Battery Serial Number | | | |
+| B034 | Battery SoC | State of charge, direct from the pack's own BMS | % | Matches the official app's per-pack SoC reading directly — no scale factor needed, unlike the inverter's P071 |
+| B035 | Battery Pack Voltage | | V | |
+| B038 | Environmental Temperature | Ambient temperature at the pack | °C | |
+| B039 | Battery Temperature | Cell temperature | °C | |
+| B040 | PCBA Temperature | Control board temperature | °C | |
+| B043 | Battery Current | Charge/discharge current for that pack | A | Sign convention: negative observed while discharging in testing |
+| B145 | Hardware Version | | | |
+| B146 | Battery Model | | | |
+| B148 | Firmware Version | | | |
+
+Also documented in the registry but not currently exposed as entities: B005 (Battery Brand), B153 (485A Protocol), B157 (CAN2 Protocol) — recorded for future reference, not yet confirmed against live hardware.
 
 ---
 
