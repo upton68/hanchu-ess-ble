@@ -25,9 +25,9 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import FAST_POLL_KEYS, SLOW_POLL_KEYS, DOMAIN
-from .coordinator import HanchuBleCoordinator
-from .entity import HanchuCoordinatorEntity
+from .const import BATTERY_POLL_KEYS, FAST_POLL_KEYS, SLOW_POLL_KEYS, DOMAIN
+from .coordinator import HanchuBatteryCoordinator, HanchuBleCoordinator
+from .entity import HanchuBatteryCoordinatorEntity, HanchuCoordinatorEntity
 
 UNIT_VAR = "var"
 
@@ -337,6 +337,81 @@ REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
     ),
 }
 
+# ---------------------------------------------------------------------------
+# Battery register sensors
+# ---------------------------------------------------------------------------
+
+BATTERY_REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
+    "B002": _register_description(
+        key="B002",
+        name="Serial Number",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "B034": _register_description(
+        key="B034",
+        name="Battery SoC",
+        device_class=SensorDeviceClass.BATTERY,
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+    ),
+    "B035": _register_description(
+        key="B035",
+        name="Pack Voltage",
+        device_class=SensorDeviceClass.VOLTAGE,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+    ),
+    "B038": _register_description(
+        key="B038",
+        name="Environmental Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    "B039": _register_description(
+        key="B039",
+        name="Battery Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    "B040": _register_description(
+        key="B040",
+        name="PCBA Temperature",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    "B043": _register_description(
+        key="B043",
+        name="Battery Current",
+        device_class=SensorDeviceClass.CURRENT,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+    ),
+    "B145": _register_description(
+        key="B145",
+        name="Hardware Version",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "B146": _register_description(
+        key="B146",
+        name="Model",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "B148": _register_description(
+        key="B148",
+        name="Firmware Version",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -377,6 +452,22 @@ async def async_setup_entry(
             for register_key in generic_register_keys
         ),
     ]
+
+    # One set of battery entities per configured battery coordinator.
+    for battery_coordinator in coordinator.battery_coordinators:
+        entities.extend(
+            HanchuBatteryRegisterSensor(
+                battery_coordinator,
+                register_key,
+                BATTERY_REGISTER_SENSORS[register_key],
+            )
+            for register_key in BATTERY_POLL_KEYS
+        )
+        entities.extend(
+            HanchuBatteryDiagnosticSensor(battery_coordinator, description)
+            for description in DIAGNOSTIC_BLE_SENSORS
+        )
+
     async_add_entities(entities)
 
 
@@ -565,6 +656,56 @@ class HanchuBleDiagnosticSensor(HanchuCoordinatorEntity, SensorEntity):
     def __init__(
         self,
         coordinator: HanchuBleCoordinator,
+        description: SensorEntityDescription,
+    ) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{coordinator.address}_{description.key}"
+
+    @property
+    def native_value(self):
+        """Return the diagnostic value from coordinator data."""
+        return getattr(self.coordinator.data, self.entity_description.key, None)
+
+
+# ---------------------------------------------------------------------------
+# Battery entities
+# ---------------------------------------------------------------------------
+
+
+class HanchuBatteryRegisterSensor(HanchuBatteryCoordinatorEntity, SensorEntity):
+    """Raw battery register sensor — same pattern as HanchuRegisterSensor."""
+
+    entity_description: SensorEntityDescription
+
+    def __init__(
+        self,
+        coordinator: HanchuBatteryCoordinator,
+        register_key: str,
+        description: SensorEntityDescription,
+    ) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator)
+        self._register_key = register_key
+        self.entity_description = description
+        self._attr_unique_id = f"{coordinator.address}_{register_key.lower()}"
+
+    @property
+    def native_value(self):
+        """Return the raw register value."""
+        values = self.coordinator.data.values or {}
+        return values.get(self._register_key)
+
+
+class HanchuBatteryDiagnosticSensor(HanchuBatteryCoordinatorEntity, SensorEntity):
+    """BLE polling health diagnostic sensor for a battery."""
+
+    entity_description: SensorEntityDescription
+
+    def __init__(
+        self,
+        coordinator: HanchuBatteryCoordinator,
         description: SensorEntityDescription,
     ) -> None:
         """Initialise the sensor."""
