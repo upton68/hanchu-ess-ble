@@ -9,10 +9,14 @@ import voluptuous as vol
 
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.core import callback
+import homeassistant.helpers.config_validation as cv
 
 from .const import (
+    BATTERY_NAME_PREFIXES,
     CONF_ADDRESS,
+    CONF_BATTERY_ADDRESSES,
     CONF_DEVICE_NAME,
     CONF_DISCOVERED_ADDRESS,
     DEFAULT_NAME,
@@ -27,6 +31,14 @@ def _is_inverter_name(name: str | None) -> bool:
     if not name:
         return False
     return any(name.startswith(prefix) for prefix in INVERTER_NAME_PREFIXES)
+
+
+def _is_battery_name(name: str | None) -> bool:
+    """Return True when the name matches a supported battery prefix."""
+
+    if not name:
+        return False
+    return any(name.startswith(prefix) for prefix in BATTERY_NAME_PREFIXES)
 
 
 def _normalise_address(address: str) -> str:
@@ -187,4 +199,65 @@ class HanchuEssBleConfigFlow(ConfigFlow, domain=DOMAIN):
                 },
             ),
             errors=errors,
+        )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: ConfigEntry,
+    ) -> HanchuEssBleOptionsFlow:
+        """Return the options flow for this integration."""
+        return HanchuEssBleOptionsFlow()
+
+
+class HanchuEssBleOptionsFlow(OptionsFlow):
+    """Options flow — currently just battery pack selection."""
+
+    def _discovered_batteries(self) -> dict[str, str]:
+        """Return currently discovered battery devices, keyed by address."""
+        devices: dict[str, str] = {}
+        for service_info in bluetooth.async_discovered_service_info(
+            self.hass,
+            connectable=False,
+        ):
+            name = service_info.name or service_info.device.name
+            if not _is_battery_name(name):
+                continue
+            label = f"{name} ({service_info.address})" if name else service_info.address
+            devices[service_info.address] = label
+        return dict(sorted(devices.items(), key=lambda item: item[1].casefold()))
+
+    async def async_step_init(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Let the user pick which discovered batteries to poll."""
+        discovered = self._discovered_batteries()
+        currently_configured: list[str] = self.config_entry.options.get(
+            CONF_BATTERY_ADDRESSES, []
+        )
+
+        # Always include already-configured addresses as options even if
+        # they're not currently advertising (e.g. temporarily out of range),
+        # so removing them is a deliberate unchecking rather than something
+        # that happens silently just because a scan missed them.
+        for address in currently_configured:
+            discovered.setdefault(address, address)
+
+        if user_input is not None:
+            return self.async_create_entry(
+                title="",
+                data={CONF_BATTERY_ADDRESSES: user_input[CONF_BATTERY_ADDRESSES]},
+            )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_BATTERY_ADDRESSES,
+                        default=currently_configured,
+                    ): cv.multi_select(discovered),
+                }
+            ),
         )
