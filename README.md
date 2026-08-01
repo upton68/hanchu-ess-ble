@@ -15,6 +15,7 @@ This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com
 ## Features
 
 - **Real-time sensors**: Battery SOC, Battery Power, Battery Temperature, Battery Capacity, Grid Power, AC Coupled PV Power, Load Power (derived), Grid Frequency, L1 Voltage/Current, EPS sensors, and more
+- **Individual battery pack monitoring**: optionally poll each battery pack's own BLE logger directly for per-pack SoC, voltage, current, and temperature — each pack shown as its own device, independent of the inverter's aggregate battery readings
 - **Work Mode control**: switch between Self-consumption, Backup, User-defined, and Off-grid modes
 - **Charge/Discharge Power Limits**: set maximum charge and discharge power in Watts
 - **SOC controls**: Maximum Charge SOC, Minimum Discharge SOC (on-grid), Grid to Battery Charge Maximum
@@ -28,7 +29,7 @@ This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com
 
 - A Hanchu iESS battery storage system with a compatible inverter
 - Home Assistant with Bluetooth support, or a Bluetooth proxy
-- A Bluetooth proxy is **strongly recommended** for reliable connectivity — onboard Bluetooth on HA hardware has been reported as unreliable with this integration across multiple setups. Tested with the **M5Stack Atom Lite** running ESPHome's Bluetooth proxy firmware, placed within range of the inverter (available from The Pi Hut for around £10)
+- A Bluetooth proxy is **strongly recommended** for reliable connectivity — onboard Bluetooth on HA hardware has been reported as unreliable with this integration across multiple setups. Tested with the **M5Stack Atom Lite** running ESPHome's Bluetooth proxy firmware, placed within range of the inverter (available from The Pi Hut for around £10). If you plan to use individual battery pack monitoring, the same proxy needs to be within range of the battery packs too — other Bluetooth sources have not been verified reliable for this integration, including for the inverter itself.
 
 ---
 
@@ -54,6 +55,19 @@ This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com
 2. Search for **Hanchu ESS BLE**
 3. Select your inverter from the discovered Bluetooth devices (device name begins with `HC:`)
 4. The integration will connect and populate all entities automatically
+
+### Adding individual battery packs (optional)
+
+Battery pack monitoring is off by default — the inverter's own aggregate battery sensors (Battery SoC, Battery Power, Battery Temperature) work without any extra setup.
+
+To monitor individual battery packs directly:
+
+1. Go to **Settings → Devices & Services**, find the Hanchu ESS BLE integration
+2. Click **Configure**
+3. Select any discovered battery packs from the list (device names begin `HC:L101`)
+4. Save — each selected battery will appear as its own device with its own sensors
+
+Battery packs poll on a 300-second interval, independently of the inverter's faster poll cycle. To add or remove batteries later, revisit **Configure** at any time.
 
 ---
 
@@ -92,6 +106,22 @@ This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com
 
 Battery Voltage, Battery Current, Active Power, Reactive Power, Power Factor, Battery Charge Today, Battery Discharge Today, PV Energy Today/Total, EPS Energy Today/Total.
 
+### Battery pack sensors (per pack, opt-in via Configure)
+
+Each configured battery pack appears as its own device with the following sensors:
+
+| Entity | Description |
+|---|---|
+| Battery SoC | State of charge, as reported directly by that pack (%) |
+| Pack Voltage | Total voltage of that pack (V) |
+| Battery Temperature | Cell temperature (°C) |
+| Environmental Temperature | Ambient temperature at the pack (°C) |
+| PCBA Temperature | Control board temperature (°C) |
+| Battery Current | Charge/discharge current for that pack (A) |
+| Serial Number, Hardware Version, Model, Firmware Version | Diagnostic identification fields |
+
+These are independent per-pack readings, distinct from the inverter's aggregate Battery SoC/Power/Temperature sensors — useful for spotting imbalance between packs on multi-battery systems.
+
 ### New in v1.0.10: Firmware & RTC Diagnostics
 
 Firmware version sensors (Main, Safety, ARM) are now categorised under
@@ -129,6 +159,10 @@ Slow poll values persist their last known reading between updates — sensors wi
 
 **Cycle duration variation** — BLE read times can vary between cycles (typically 6–17 seconds has been observed). This is believed to be partly caused by the inverter handling cloud polling requests simultaneously, which occasionally delays its BLE response. Value persistence means this variation does not cause sensors to go unavailable.
 
+### Battery Pack Polling
+
+Individual battery packs (if configured) poll on a separate, much slower 300-second interval, since SoC/voltage/temperature change gradually and don't need the inverter's faster cadence. Each battery reads all of its sensor values in a single BLE connection per cycle, rather than the tiered fast/slow approach used for the inverter. Battery polling failures follow the same consecutive-failure tolerance as the inverter, and are tracked independently per pack — one battery's BLE issues cannot affect another battery or the inverter.
+
 ---
 
 ## Known Limitations
@@ -138,6 +172,7 @@ Slow poll values persist their last known reading between updates — sensors wi
 - **Fast charge/discharge** — not available locally. This feature appears to be cloud-only on tested hardware.
 - **DC-coupled PV sensors** (PV1/PV2 Voltage/Current, PV Total Power) — will read zero on AC-coupled systems where solar is connected via a separate inverter rather than directly into the Hanchu's DC inputs.
 - **This integration is not supported by Hanchu.** It was developed independently by reverse-engineering the local BLE protocol.
+- **Battery pack visibility** — battery packs must be within range of, and previously discovered by, your Bluetooth proxy before they'll appear as selectable options in Configure. If a battery isn't listed, check it's showing as a discovered device under Settings → Devices & Services → Bluetooth before trying again.
 
 ---
 
