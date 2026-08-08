@@ -50,6 +50,8 @@ FAST_POLL_KEYS: tuple[str, ...] = (
     "P025",  # PV1 Current
     "P026",  # PV2 Voltage
     "P027",  # PV2 Current
+    "P028",  # PV3 Voltage
+    "P029",  # PV3 Current
     "P060",  # PV Total Power
     "P061",  # PV Energy Today
     "P062",  # PV Energy Total
