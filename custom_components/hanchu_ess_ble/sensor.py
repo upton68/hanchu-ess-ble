@@ -129,6 +129,20 @@ REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
+    "P028": _register_description(
+        key="P028",
+        name="PV3 Voltage",
+        device_class=SensorDeviceClass.VOLTAGE,
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    "P029": _register_description(
+        key="P029",
+        name="PV3 Current",
+        device_class=SensorDeviceClass.CURRENT,
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
     "P044": _register_description(
         key="P044",
         name="L1 Voltage",
