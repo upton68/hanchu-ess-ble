@@ -45,6 +45,8 @@ These were discovered during live testing and are critical for correct operation
 | P025 | PV String 1 Current | DC-coupled PV input | A | ~0 on AC-coupled systems |
 | P026 | PV String 2 Voltage | DC-coupled PV input | V | ~0 on AC-coupled systems |
 | P027 | PV String 2 Current | DC-coupled PV input | A | ~0 on AC-coupled systems |
+| P028 | PV String 3 Voltage | DC-coupled PV input, 3-MPPT inverters only | V | Confirmed against real 3-MPPT hardware by [@techjlb](https://github.com/techjlb) — follows the same +2 register offset per string as PV1/PV2. ~0 on 2-MPPT or AC-coupled systems |
+| P029 | PV String 3 Current | DC-coupled PV input, 3-MPPT inverters only | A | Confirmed against real 3-MPPT hardware by [@techjlb](https://github.com/techjlb) — follows the same +2 register offset per string as PV1/PV2. ~0 on 2-MPPT or AC-coupled systems |
 | P044 | Grid Voltage L1 | | V | |
 | P045 | Grid Current L1 | | A | |
 | P046 | Grid Parameter (P046) | | | Returns `None` — unsupported on tested hardware/firmware |
