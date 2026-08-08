@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-08
+
+### Added
+PV3 Voltage and Current sensors (P028, P029) for inverters with a third MPPT string, following the same register offset pattern as PV1 (P024/P025) and PV2 (P026/P027). Confirmed against real 3-MPPT hardware and contributed by @techjlb.
+
 ## [1.1.0] - 2026-08-01
 
 ### Added
@@ -140,7 +145,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.0.11...v1.1.0
 [1.0.11]: https://github.com/upton68/hanchu-ess-ble/compare/v1.0.10...v1.0.11
 [1.0.10]: https://github.com/upton68/hanchu-ess-ble/compare/v1.0.9...v1.0.10
