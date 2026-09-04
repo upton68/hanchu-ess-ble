@@ -36,6 +36,14 @@ _LOGGER = logging.getLogger(__name__)
 _DEFAULT_OPERATION_TIMEOUT = 10.0
 _HANDSHAKE_ACK_TIMEOUT = 5.0
 _DEFAULT_READ_BATCH_SIZE = 12
+# Overall ceiling for one full connect -> operate -> disconnect cycle.
+# Individual steps (connect, handshake, each reply wait) already have their
+# own bounded timeouts, but start_notify(), write_gatt_char(), and
+# disconnect() do not — some Bleak/BlueZ backends can hang indefinitely on
+# these under BLE proxy contention. Wrapping the whole sequence in one outer
+# timeout guarantees the coordinator's update always completes or raises
+# within a bounded time, regardless of which internal call gets stuck.
+_TOTAL_OPERATION_TIMEOUT = 60.0
 
 
 @dataclass(slots=True)
@@ -144,7 +152,27 @@ class HanchuBleClient:
         *,
         encrypted: bool = True,
     ) -> HanchuReply:
-        """Body of async_read_values, run while holding the connection lock."""
+        """Body of async_read_values, run while holding the connection lock.
+
+        The entire connect -> operate -> disconnect sequence is wrapped in
+        one outer timeout (see _perform_with_timeout) rather than protecting
+        only the connection step. start_notify(), write_gatt_char(), and
+        disconnect() have no timeout of their own and can hang indefinitely
+        under BLE proxy contention — a hang in any of them would otherwise
+        freeze this coordinator's update cycle permanently with no exception
+        ever raised.
+        """
+        return await self._perform_with_timeout(
+            self._async_read_values_inner(keys, encrypted=encrypted)
+        )
+
+    async def _async_read_values_inner(
+        self,
+        keys: list[str],
+        *,
+        encrypted: bool = True,
+    ) -> HanchuReply:
+        """Unwrapped body of the read operation — always call via a timeout wrapper."""
         _LOGGER.debug(
             "Starting Hanchu BLE read address=%s keys=%s encrypted=%s",
             self.address,
@@ -202,6 +230,28 @@ class HanchuBleClient:
             await client.disconnect()
             _LOGGER.debug("Disconnected from Hanchu inverter address=%s", self.address)
 
+    async def _perform_with_timeout(self, coro):
+        """Run a connect/operate/disconnect coroutine under one overall timeout.
+
+        If the wrapped coroutine hangs anywhere — connection establishment,
+        notify setup, a GATT write, or disconnect — this raises
+        asyncio.TimeoutError after _TOTAL_OPERATION_TIMEOUT seconds instead of
+        blocking forever. That lets the coordinator's existing except
+        Exception handling treat it as a normal failed cycle (incrementing
+        consecutive_failures, retaining last-known values, and trying again
+        next cycle) rather than the update silently never completing.
+        """
+        try:
+            return await asyncio.wait_for(coro, timeout=_TOTAL_OPERATION_TIMEOUT)
+        except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "Hanchu BLE operation for address=%s exceeded %.0fs and was "
+                "aborted — likely a hung connect/notify/write/disconnect call",
+                self.address,
+                _TOTAL_OPERATION_TIMEOUT,
+            )
+            raise
+
     async def async_write_value(
         self,
         key: str,
@@ -220,7 +270,24 @@ class HanchuBleClient:
         *,
         encrypted: bool = True,
     ) -> HanchuReply:
-        """Body of async_write_value, run while holding the connection lock."""
+        """Body of async_write_value, run while holding the connection lock.
+
+        See _async_read_values_locked — the same outer-timeout wrapping
+        applies here, covering the full connect/notify/write/disconnect
+        sequence rather than just connection establishment.
+        """
+        return await self._perform_with_timeout(
+            self._async_write_value_inner(key, value, encrypted=encrypted)
+        )
+
+    async def _async_write_value_inner(
+        self,
+        key: str,
+        value,
+        *,
+        encrypted: bool = True,
+    ) -> HanchuReply:
+        """Unwrapped body of the write operation — always call via a timeout wrapper."""
         _LOGGER.debug(
             "Starting Hanchu BLE write address=%s key=%s value=%s encrypted=%s",
             self.address,
