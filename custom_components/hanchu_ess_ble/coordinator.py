@@ -13,6 +13,7 @@ from homeassistant.components.bluetooth import BluetoothChange, BluetoothService
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .ble_client import HanchuBleClient, HanchuBleSnapshot, snapshot_from_service_info
@@ -339,6 +340,22 @@ class HanchuBatteryCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
     connection each cycle rather than tiering fast/slow like the inverter —
     ten keys in one request has already been verified working against real
     hardware.
+
+    IMPORTANT: this coordinator drives its own periodic refresh explicitly
+    via async_track_time_interval, rather than relying on
+    DataUpdateCoordinator's built-in automatic rescheduling. In testing,
+    the built-in scheduler was observed to run the first refresh correctly
+    but then never re-arm itself — leaving the coordinator's data
+    permanently stale until a manual refresh (e.g. via the
+    homeassistant.update_entity action) was triggered, at which point it
+    worked once and then stalled again. The read/write pipeline itself is
+    fully healthy (confirmed via manual refresh); the fault is specific to
+    this sub-coordinator's automatic scheduling, likely related to it being
+    created dynamically inside the parent HanchuBleCoordinator's own
+    async_setup() rather than via the normal top-level config-entry setup
+    flow the inverter's coordinator goes through. Explicit scheduling here
+    sidesteps that entirely rather than depending on it being fixed
+    upstream.
     """
 
     def __init__(
@@ -357,17 +374,26 @@ class HanchuBatteryCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         self.client = HanchuBleClient(hass, address, self.configured_name)
         self._unsubscribe_bluetooth: CALLBACK_TYPE | None = None
         self._unsubscribe_unavailable: CALLBACK_TYPE | None = None
+        self._unsubscribe_periodic_refresh: CALLBACK_TYPE | None = None
         self._consecutive_failures: int = 0
 
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}_battery_{address}",
-            update_interval=BATTERY_SCAN_INTERVAL,
+            # Deliberately None: periodic refresh is driven explicitly via
+            # async_track_time_interval in async_setup() instead of relying
+            # on DataUpdateCoordinator's own built-in scheduling. Passing
+            # BATTERY_SCAN_INTERVAL here as well caused the base class's own
+            # internal retry/reschedule behaviour to run concurrently with
+            # our explicit timer, producing far more frequent — and
+            # overlapping — refresh attempts than intended, along with
+            # unhandled errors from concurrent access to coordinator state.
+            update_interval=None,
         )
 
     async def async_setup(self) -> None:
-        """Register Bluetooth listeners after the first refresh."""
+        """Register Bluetooth listeners and start explicit periodic polling."""
         if self._unsubscribe_bluetooth is not None:
             return
 
@@ -384,8 +410,22 @@ class HanchuBatteryCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
             connectable=False,
         )
 
+        # See the class docstring: DataUpdateCoordinator's built-in
+        # rescheduling was not reliably re-arming for this dynamically
+        # created sub-coordinator, so periodic refresh is driven explicitly
+        # here instead.
+        self._unsubscribe_periodic_refresh = async_track_time_interval(
+            self.hass,
+            self._async_scheduled_refresh,
+            BATTERY_SCAN_INTERVAL,
+        )
+
+    async def _async_scheduled_refresh(self, _now) -> None:
+        """Explicitly trigger a refresh on the battery's own interval."""
+        await self.async_request_refresh()
+
     async def async_shutdown(self) -> None:
-        """Release Bluetooth listeners."""
+        """Release Bluetooth listeners and stop periodic polling."""
         if self._unsubscribe_bluetooth is not None:
             self._unsubscribe_bluetooth()
             self._unsubscribe_bluetooth = None
@@ -393,6 +433,10 @@ class HanchuBatteryCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         if self._unsubscribe_unavailable is not None:
             self._unsubscribe_unavailable()
             self._unsubscribe_unavailable = None
+
+        if self._unsubscribe_periodic_refresh is not None:
+            self._unsubscribe_periodic_refresh()
+            self._unsubscribe_periodic_refresh = None
 
     async def _async_update_data(self) -> HanchuCoordinatorData:
         """Fetch the latest values for this battery pack."""
