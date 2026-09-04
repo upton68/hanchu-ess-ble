@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-09-04
+
+### Fixed
+
+**Battery pack coordinators (HanchuBatteryCoordinator) would perform their first refresh successfully at startup, then never update again automatically.** Entities showed increasingly stale data — sometimes for hours — with no error logged and Consecutive BLE Failures stuck at 0, since the coordinator's own scheduled refresh was never actually re-arming itself after the first cycle.
+**Root cause:** DataUpdateCoordinator's built-in automatic rescheduling was not reliably reactivating for these sub-coordinators, which are created dynamically inside the parent inverter coordinator's own async_setup() rather than through the normal top-level config-entry setup flow. A manual refresh (e.g. via homeassistant.update_entity) always worked correctly, confirming the read pipeline itself was healthy — only the automatic scheduling was affected.
+**Fixed** by having HanchuBatteryCoordinator drive its own periodic refresh explicitly via async_track_time_interval, with the base class's own scheduling disabled (update_interval=None) to avoid the two mechanisms conflicting.
+
 ## [1.1.1] - 2026-08-08
 
 ### Added
@@ -145,7 +153,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.0.11...v1.1.0
 [1.0.11]: https://github.com/upton68/hanchu-ess-ble/compare/v1.0.10...v1.0.11
