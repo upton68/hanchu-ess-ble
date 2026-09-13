@@ -5,12 +5,13 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
 
 from .const import DOMAIN, PLATFORMS
 from .coordinator import HanchuBleCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Hanchu ESS BLE from a config entry."""
@@ -22,9 +23,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
-    
+    async def handle_bench_test_multi_write(call: ServiceCall) -> None:
+        """TEMPORARY bench-test service — remove once multi-key write is confirmed."""
+        client = coordinator.client
+        pairs = [
+            ("L011", call.data["value_1"]),
+            ("L012", call.data["value_2"]),
+        ]
+        reply = await client.bench_test_multi_write(pairs)
+        _LOGGER.warning("Bench test multi-write reply: %s", reply.as_dict())
+
+        # Immediately read back both keys to confirm the device actually
+        # applied both, not just the first entry in the array.
+        readback = await client.async_read_values([k for k, _ in pairs])
+        _LOGGER.warning("Bench test read-back: %s", readback.as_dict())
+
+    if not hass.services.has_service(DOMAIN, "bench_test_multi_write"):
+        hass.services.async_register(
+            DOMAIN, "bench_test_multi_write", handle_bench_test_multi_write
+        )
 
     return True
+
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
@@ -40,19 +60,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload a config entry."""
     await hass.config_entries.async_reload(entry.entry_id)
-
-async def handle_bench_test_multi_write(call: ServiceCall) -> None:
-    client: HanchuBleClient = hass.data[DOMAIN][entry.entry_id]["ble_client"]
-    pairs = [
-        ("L011", call.data["7200"]),
-        ("L012", call.data["12600"]),
-    ]
-    reply = await client.bench_test_multi_write(pairs)
-    _LOGGER.warning("Bench test multi-write reply: %s", reply.as_dict())
-
-    # Immediately read back both keys to confirm the device actually
-    # applied both, not just the first entry in the array.
-    readback = await client.async_read_values([k for k, _ in pairs])
-    _LOGGER.warning("Bench test read-back: %s", readback.as_dict())
-
-hass.services.async_register(DOMAIN, "bench_test_multi_write", handle_bench_test_multi_write)

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 import random
+from typing import Any
 
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -25,9 +26,9 @@ from .protocol import (
     HanchuReply,
     HanchuReplyAssembler,
     build_handshake_command,
+    build_multi_write_request,
     build_read_request,
     build_write_request,
-    build_multi_write_request,
     decrypt_message,
     derive_session_key,
     encrypt_message,
@@ -120,13 +121,13 @@ class HanchuBleSession:
         return encrypt_message(payload, self._secret_key)
 
     def encode_multi_write_request(
-    self, pairs: list[tuple[str, Any]], *, encrypt: bool = True
-) -> bytes:
-    """Encode a JSON multi-key write request, encrypting it when requested."""
-    payload = build_multi_write_request(pairs)
-    if not encrypt:
-        return payload
-    return encrypt_message(payload, self._secret_key)
+        self, pairs: list[tuple[str, Any]], *, encrypt: bool = True
+    ) -> bytes:
+        """Encode a JSON multi-key write request, encrypting it when requested."""
+        payload = build_multi_write_request(pairs)
+        if not encrypt:
+            return payload
+        return encrypt_message(payload, self._secret_key)
 
     def decode_notification(self, payload: bytes, *, encrypted: bool = True) -> HanchuReply | None:
         """Decode a notification payload into a structured reply when complete."""
@@ -364,8 +365,8 @@ class HanchuBleClient:
         confirmed working (or not) on real hardware.
 
         Mirrors _async_write_value_inner exactly, except it builds one
-        multi-key payload via encode_multi_write_request instead of
-        looping single-key writes.
+        multi-key payload via encode_multi_write_request instead of a
+        single-key payload.
         """
         async with self._connection_lock:
             return await self._perform_with_timeout(
@@ -378,13 +379,16 @@ class HanchuBleClient:
         *,
         encrypted: bool = True,
     ) -> HanchuReply:
+        """Unwrapped body of the bench-test multi-write — always call via bench_test_multi_write."""
         _LOGGER.debug(
             "BENCH TEST: starting Hanchu BLE multi-write address=%s pairs=%s",
             self.address,
             pairs,
         )
         ble_device = bluetooth.async_ble_device_from_address(
-            self.hass, self.address, connectable=True
+            self.hass,
+            self.address,
+            connectable=True,
         )
         if ble_device is None:
             raise BleakError(f"No connectable BLE device found for {self.address}")
@@ -392,21 +396,28 @@ class HanchuBleClient:
         self._session.reset()
         self._drain_notifications()
         client = await establish_connection(
-            BleakClientWithServiceCache, ble_device, self.name, max_attempts=3
+            BleakClientWithServiceCache,
+            ble_device,
+            self.name,
+            max_attempts=3,
         )
         try:
+            _LOGGER.debug("Connected to Hanchu inverter address=%s", self.address)
             await self._async_start_notify(client)
             if encrypted:
                 await self._async_perform_handshake(client)
 
             payload = self._session.encode_multi_write_request(pairs, encrypt=encrypted)
             _LOGGER.debug(
-                "BENCH TEST: writing multi-write request address=%s payload=%s",
+                "BENCH TEST: writing multi-write request address=%s pairs=%s payload=%s",
                 self.address,
+                pairs,
                 payload.hex(),
             )
             await client.write_gatt_char(
-                BLE_WRITE_CHARACTERISTIC_UUID, payload, response=False
+                BLE_WRITE_CHARACTERISTIC_UUID,
+                payload,
+                response=False,
             )
             reply = await self._async_wait_for_reply(encrypted=encrypted)
             _LOGGER.debug(
@@ -419,8 +430,7 @@ class HanchuBleClient:
         finally:
             await self._async_stop_notify(client)
             await client.disconnect()
-
-    
+            _LOGGER.debug("Disconnected from Hanchu inverter address=%s", self.address)
 
     async def _async_start_notify(self, client: BleakClient) -> None:
         """Start notifications on the inverter read characteristic."""
