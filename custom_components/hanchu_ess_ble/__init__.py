@@ -44,8 +44,8 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 async def handle_bench_test_multi_write(call: ServiceCall) -> None:
     client: HanchuBleClient = hass.data[DOMAIN][entry.entry_id]["ble_client"]
     pairs = [
-        ("L011", call.data["value_1"]),
-        ("L012", call.data["value_2"]),
+        ("L011", call.data["7200"]),
+        ("L012", call.data["12600"]),
     ]
     reply = await client.bench_test_multi_write(pairs)
     _LOGGER.warning("Bench test multi-write reply: %s", reply.as_dict())
