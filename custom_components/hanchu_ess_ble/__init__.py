@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, PLATFORMS
 from .coordinator import HanchuBleCoordinator
@@ -22,26 +22,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-
-    async def handle_bench_test_multi_write(call: ServiceCall) -> None:
-        """TEMPORARY bench-test service — remove once multi-key write is confirmed."""
-        client = coordinator.client
-        pairs = [
-            ("L011", call.data["value_1"]),
-            ("L012", call.data["value_2"]),
-        ]
-        reply = await client.bench_test_multi_write(pairs)
-        _LOGGER.warning("Bench test multi-write reply: %s", reply.as_dict())
-
-        # Immediately read back both keys to confirm the device actually
-        # applied both, not just the first entry in the array.
-        readback = await client.async_read_values([k for k, _ in pairs])
-        _LOGGER.warning("Bench test read-back: %s", readback.as_dict())
-
-    if not hass.services.has_service(DOMAIN, "bench_test_multi_write"):
-        hass.services.async_register(
-            DOMAIN, "bench_test_multi_write", handle_bench_test_multi_write
-        )
 
     return True
 
