@@ -178,6 +178,33 @@ def build_write_request(key: str, value, tid: str = "10001") -> bytes:
     _LOGGER.debug("Built Hanchu write request tid=%s key=%s value=%s payload=%s", tid, key, value, encoded)
     return encoded
 
+def build_multi_write_request(pairs: list[tuple[str, Any]], tid: str = "10001") -> bytes:
+    """Build a compact JSON write request for multiple inverter keys at once.
+
+    Same envelope shape as build_write_request, but with one entry per
+    (key, value) pair in `data` — mirrors how build_read_request already
+    batches multiple keys into one request. UNCONFIRMED against firmware
+    until bench-tested: the read side is known to accept multi-entry
+    `data` arrays, but the write side has only ever been exercised with a
+    single entry in production, so this is an inference by analogy, not
+    a documented behaviour.
+    """
+
+    payload = {
+        "act": "3",
+        "cmd": "local",
+        "data": [{"k": key, "v": value} for key, value in pairs],
+        "tid": tid,
+    }
+    encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    _LOGGER.debug(
+        "Built Hanchu multi-write request tid=%s pairs=%s payload=%s",
+        tid,
+        pairs,
+        encoded,
+    )
+    return encoded
+
 
 def _decode_json_payload(payload: bytes) -> dict[str, Any]:
     """Decode a reply payload after discarding any leading transport bytes."""
