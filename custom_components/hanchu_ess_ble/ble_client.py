@@ -23,10 +23,10 @@ from .const import (
 )
 from .protocol import (
     AES_ACK_PREFIX,
+    HanchuProtocolError,
     HanchuReply,
     HanchuReplyAssembler,
     build_handshake_command,
-    build_multi_write_request,
     build_read_request,
     build_write_request,
     decrypt_message,
@@ -116,15 +116,6 @@ class HanchuBleSession:
     def encode_write_request(self, key: str, value, *, encrypt: bool = True) -> bytes:
         """Encode a JSON write request, encrypting it when requested."""
         payload = build_write_request(key, value)
-        if not encrypt:
-            return payload
-        return encrypt_message(payload, self._secret_key)
-
-    def encode_multi_write_request(
-        self, pairs: list[tuple[str, Any]], *, encrypt: bool = True
-    ) -> bytes:
-        """Encode a JSON multi-key write request, encrypting it when requested."""
-        payload = build_multi_write_request(pairs)
         if not encrypt:
             return payload
         return encrypt_message(payload, self._secret_key)
@@ -354,41 +345,48 @@ class HanchuBleClient:
             await client.disconnect()
             _LOGGER.debug("Disconnected from Hanchu inverter address=%s", self.address)
 
-    async def bench_test_multi_write(
+    async def async_write_values(
         self,
         pairs: list[tuple[str, Any]],
         *,
         encrypted: bool = True,
-    ) -> HanchuReply:
-        """TEMPORARY bench-test method — connect once, write multiple keys
-        in a single request, disconnect. Delete once multi-key write is
-        confirmed working (or not) on real hardware.
+    ) -> list[HanchuReply]:
+        """Connect once, write multiple keys sequentially, then disconnect.
 
-        Mirrors _async_write_value_inner exactly, except it builds one
-        multi-key payload via encode_multi_write_request instead of a
-        single-key payload.
+        Not a single atomic device-level write — each pair is still its own
+        request/reply round trip, so there's a brief window where an earlier
+        key has been applied and a later one hasn't. What this DOES fix is
+        the connection-contention cost of a separate connect/disconnect per
+        key: everything happens inside one BLE session.
+
+        Uses the same single-key encode_write_request path as
+        async_write_value (proven reliable) rather than a multi-entry
+        envelope — bench testing showed the firmware reports false success
+        for multi-entry writes without actually committing the values, so
+        that approach was abandoned in favour of this one.
+
+        Raises on the first non-zero status code rather than continuing,
+        so a partial failure is visible instead of silently swallowed.
         """
         async with self._connection_lock:
             return await self._perform_with_timeout(
-                self._bench_test_multi_write_inner(pairs, encrypted=encrypted)
+                self._async_write_values_inner(pairs, encrypted=encrypted)
             )
 
-    async def _bench_test_multi_write_inner(
+    async def _async_write_values_inner(
         self,
         pairs: list[tuple[str, Any]],
         *,
         encrypted: bool = True,
-    ) -> HanchuReply:
-        """Unwrapped body of the bench-test multi-write — always call via bench_test_multi_write."""
+    ) -> list[HanchuReply]:
+        """Unwrapped body — always call via async_write_values."""
         _LOGGER.debug(
-            "BENCH TEST: starting Hanchu BLE multi-write address=%s pairs=%s",
+            "Starting Hanchu BLE multi-value write address=%s pairs=%s",
             self.address,
             pairs,
         )
         ble_device = bluetooth.async_ble_device_from_address(
-            self.hass,
-            self.address,
-            connectable=True,
+            self.hass, self.address, connectable=True
         )
         if ble_device is None:
             raise BleakError(f"No connectable BLE device found for {self.address}")
@@ -396,37 +394,41 @@ class HanchuBleClient:
         self._session.reset()
         self._drain_notifications()
         client = await establish_connection(
-            BleakClientWithServiceCache,
-            ble_device,
-            self.name,
-            max_attempts=3,
+            BleakClientWithServiceCache, ble_device, self.name, max_attempts=3
         )
         try:
-            _LOGGER.debug("Connected to Hanchu inverter address=%s", self.address)
             await self._async_start_notify(client)
             if encrypted:
                 await self._async_perform_handshake(client)
 
-            payload = self._session.encode_multi_write_request(pairs, encrypt=encrypted)
+            replies: list[HanchuReply] = []
+            for key, value in pairs:
+                payload = self._session.encode_write_request(key, value, encrypt=encrypted)
+                _LOGGER.debug(
+                    "Writing Hanchu request (sequential multi-value) address=%s key=%s value=%s",
+                    self.address,
+                    key,
+                    value,
+                )
+                await client.write_gatt_char(
+                    BLE_WRITE_CHARACTERISTIC_UUID, payload, response=False
+                )
+                reply = await self._async_wait_for_reply(encrypted=encrypted)
+
+                status = reply.as_dict().get(key)
+                if status != 0:
+                    raise HanchuProtocolError(
+                        f"Write for key={key} value={value} did not confirm "
+                        f"success (status={status}); stopping before remaining "
+                        f"{len(pairs) - len(replies) - 1} pair(s)"
+                    )
+                replies.append(reply)
+
             _LOGGER.debug(
-                "BENCH TEST: writing multi-write request address=%s pairs=%s payload=%s",
+                "Completed Hanchu BLE multi-value write address=%s all confirmed",
                 self.address,
-                pairs,
-                payload.hex(),
             )
-            await client.write_gatt_char(
-                BLE_WRITE_CHARACTERISTIC_UUID,
-                payload,
-                response=False,
-            )
-            reply = await self._async_wait_for_reply(encrypted=encrypted)
-            _LOGGER.debug(
-                "BENCH TEST: multi-write reply address=%s tid=%s reply=%s",
-                self.address,
-                reply.tid,
-                reply.as_dict(),
-            )
-            return reply
+            return replies
         finally:
             await self._async_stop_notify(client)
             await client.disconnect()
