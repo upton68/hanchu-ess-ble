@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_call_later
 
 from .protocol import HanchuProtocolError
@@ -86,8 +86,8 @@ class PendingWriteBuffer:
     def pending_count(self) -> int:
         return len(self._pending)
 
-    def add_listener(self, callback: Callable[[], None]) -> None:
-        self._listeners.append(callback)
+    def add_listener(self, listener: Callable[[], None]) -> None:
+        self._listeners.append(listener)
 
     def _notify_listeners(self) -> None:
         for cb in self._listeners:
@@ -96,8 +96,22 @@ class PendingWriteBuffer:
     def _reset_timeout(self) -> None:
         self._cancel_pending_timeout()
         self._cancel_timeout = async_call_later(
-            self.hass, PENDING_TIMEOUT_SECONDS, lambda _now: self.discard()
+            self.hass, PENDING_TIMEOUT_SECONDS, self._handle_timeout
         )
+
+    @callback
+    def _handle_timeout(self, _now) -> None:
+        """Auto-discard once the pending timeout elapses.
+
+        Must be marked @callback so Home Assistant runs it directly on the
+        event loop. Without this, HA treats a plain function as unsafe to
+        run on the loop and may dispatch it to a worker thread instead —
+        and discard() -> _notify_listeners() -> entity.async_write_ha_state()
+        requires the event loop thread, so it can fail silently there rather
+        than doing anything visible. That looked exactly like "the timeout
+        should have fired but nothing changed."
+        """
+        self.discard()
 
     def _cancel_pending_timeout(self) -> None:
         if self._cancel_timeout is not None:
