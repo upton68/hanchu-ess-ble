@@ -27,6 +27,7 @@ from .protocol import (
     build_handshake_command,
     build_read_request,
     build_write_request,
+    build_multi_write_request,
     decrypt_message,
     derive_session_key,
     encrypt_message,
@@ -117,6 +118,15 @@ class HanchuBleSession:
         if not encrypt:
             return payload
         return encrypt_message(payload, self._secret_key)
+
+    def encode_multi_write_request(
+    self, pairs: list[tuple[str, Any]], *, encrypt: bool = True
+) -> bytes:
+    """Encode a JSON multi-key write request, encrypting it when requested."""
+    payload = build_multi_write_request(pairs)
+    if not encrypt:
+        return payload
+    return encrypt_message(payload, self._secret_key)
 
     def decode_notification(self, payload: bytes, *, encrypted: bool = True) -> HanchuReply | None:
         """Decode a notification payload into a structured reply when complete."""
@@ -342,6 +352,73 @@ class HanchuBleClient:
             await self._async_stop_notify(client)
             await client.disconnect()
             _LOGGER.debug("Disconnected from Hanchu inverter address=%s", self.address)
+
+    async def bench_test_multi_write(
+        self,
+        pairs: list[tuple[str, Any]],
+        *,
+        encrypted: bool = True,
+    ) -> HanchuReply:
+        """TEMPORARY bench-test method — connect once, write multiple keys
+        in a single request, disconnect. Delete once multi-key write is
+        confirmed working (or not) on real hardware.
+
+        Mirrors _async_write_value_inner exactly, except it builds one
+        multi-key payload via encode_multi_write_request instead of
+        looping single-key writes.
+        """
+        async with self._connection_lock:
+            return await self._perform_with_timeout(
+                self._bench_test_multi_write_inner(pairs, encrypted=encrypted)
+            )
+
+    async def _bench_test_multi_write_inner(
+        self,
+        pairs: list[tuple[str, Any]],
+        *,
+        encrypted: bool = True,
+    ) -> HanchuReply:
+        _LOGGER.debug(
+            "BENCH TEST: starting Hanchu BLE multi-write address=%s pairs=%s",
+            self.address,
+            pairs,
+        )
+        ble_device = bluetooth.async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
+        if ble_device is None:
+            raise BleakError(f"No connectable BLE device found for {self.address}")
+
+        self._session.reset()
+        self._drain_notifications()
+        client = await establish_connection(
+            BleakClientWithServiceCache, ble_device, self.name, max_attempts=3
+        )
+        try:
+            await self._async_start_notify(client)
+            if encrypted:
+                await self._async_perform_handshake(client)
+
+            payload = self._session.encode_multi_write_request(pairs, encrypt=encrypted)
+            _LOGGER.debug(
+                "BENCH TEST: writing multi-write request address=%s payload=%s",
+                self.address,
+                payload.hex(),
+            )
+            await client.write_gatt_char(
+                BLE_WRITE_CHARACTERISTIC_UUID, payload, response=False
+            )
+            reply = await self._async_wait_for_reply(encrypted=encrypted)
+            _LOGGER.debug(
+                "BENCH TEST: multi-write reply address=%s tid=%s reply=%s",
+                self.address,
+                reply.tid,
+                reply.as_dict(),
+            )
+            return reply
+        finally:
+            await self._async_stop_notify(client)
+            await client.disconnect()
 
     
 
