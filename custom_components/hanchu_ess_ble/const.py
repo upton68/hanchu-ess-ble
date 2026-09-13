@@ -14,7 +14,7 @@ DEFAULT_NAME = "Hanchu ESS"
 DEFAULT_SCAN_INTERVAL_SECONDS = 30
 MAX_CONSECUTIVE_FAILURES = 3
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SELECT, Platform.NUMBER, Platform.TIME]
+PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.SENSOR, Platform.SELECT, Platform.NUMBER, Platform.TIME]
 SCAN_INTERVAL = timedelta(seconds=DEFAULT_SCAN_INTERVAL_SECONDS)
 
 MANUFACTURER = "Hanchu"
