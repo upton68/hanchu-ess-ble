@@ -29,6 +29,7 @@ class PendingWriteBuffer:
     _pending: dict[str, Any] = field(default_factory=dict)
     _cancel_timeout: Callable[[], None] | None = field(default=None, init=False)
     _listeners: list[Callable[[], None]] = field(default_factory=list)
+    _in_progress: bool = field(default=False, init=False)
 
     def stage(self, register_key: str, value: Any) -> None:
         """Called by a number/select entity instead of writing to BLE."""
@@ -42,9 +43,26 @@ class PendingWriteBuffer:
     def discard(self) -> None:
         if not self._pending:
             return
+        if self._in_progress:
+            _LOGGER.warning(
+                "Cannot discard while a confirm is in progress; ignoring"
+            )
+            return
         self._pending.clear()
         self._cancel_pending_timeout()
         self._notify_listeners()
+
+    @property
+    def is_confirming(self) -> bool:
+        """True while a confirm() is actively in flight.
+
+        Guards against a second Confirm press launching another
+        async_write_values call while an earlier one is still running (e.g.
+        stuck in a BLE hang) — without this, presses just queue silently on
+        the client's connection lock and pile up rather than being visibly
+        rejected, which is what happened during testing tonight.
+        """
+        return self._in_progress
 
     async def confirm(self) -> None:
         """Flush everything staged in one BLE connection (sequential writes).
@@ -60,11 +78,22 @@ class PendingWriteBuffer:
         If any pair fails to confirm (TimeoutError, or a non-zero status
         code raised as HanchuProtocolError), the buffer is left intact so
         the failed edit(s) can be retried rather than silently lost.
+
+        A second call while one is already in flight is rejected outright
+        (see is_confirming) rather than being allowed to queue.
         """
         if not self._pending:
             return
-        pairs = list(self._pending.items())
+        if self._in_progress:
+            _LOGGER.warning(
+                "Confirm already in progress; ignoring duplicate request"
+            )
+            return
+
+        self._in_progress = True
+        self._notify_listeners()  # let the button go unavailable immediately
         try:
+            pairs = list(self._pending.items())
             await self.ble_client.async_write_values(pairs)
         except (TimeoutError, HanchuProtocolError):
             _LOGGER.warning(
@@ -76,6 +105,8 @@ class PendingWriteBuffer:
         else:
             self._pending.clear()
             self._cancel_pending_timeout()
+        finally:
+            self._in_progress = False
             self._notify_listeners()
 
     @property
