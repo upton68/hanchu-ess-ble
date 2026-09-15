@@ -22,6 +22,7 @@ This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com
 - **Time slot scheduling**: full control of all six charge and discharge time periods (User-defined mode)
 - **Tiered polling**: real-time sensors update every 30 seconds; static values (firmware versions, hardware config) rotate through on a slower schedule, reducing BLE load
 - **Fully local**: no cloud dependency — works even if the Hanchu cloud is unavailable
+- **Staged writes with explicit confirmation**: changes to numeric limits, work mode, and time slots are staged locally and only sent to the device when you press **Confirm Write** — multiple changes can be queued and applied together in a single BLE connection, and **Discard Changes** cancels any staged edits without writing them
 
 ---
 
@@ -85,6 +86,20 @@ Battery packs poll on a 300-second interval, independently of the inverter's fas
 | Grid to Battery Charge Maximum | Upper SOC limit for grid-to-battery charging (%) |
 | Charge Slot 1–3 Start/End | Charge time periods for User-defined mode |
 | Discharge Slot 1–3 Start/End | Discharge time periods for User-defined mode |
+| Confirm Write | Applies all currently staged changes to the device in a single BLE connection |
+| Discard Changes | Cancels all currently staged changes without writing them to the device |
+
+### New in v1.2.0: Staged Writes & Confirmation
+
+Previously, changing a number, select, or time entity wrote to the device immediately — each change triggered its own BLE connection. As of this release, changes are **staged** locally instead:
+
+- Change any control (a limit, work mode, or a time slot) and the new value shows immediately in Home Assistant, but nothing is sent to the device yet.
+- The **Confirm Write** button becomes available whenever there's at least one staged change. Pressing it opens a single BLE connection and writes every staged change in sequence, then disconnects.
+- The **Discard Changes** button clears all staged changes and reverts the affected entities to their last known device values, without writing anything.
+- If changes are left unconfirmed for 5 minutes, they're automatically discarded and the entities revert on their own.
+- While a Confirm Write is in progress, both buttons become unavailable until it completes, to prevent overlapping write attempts.
+
+This groups related changes (e.g. a charge start and end time) into one BLE session instead of one per field, and gives an explicit review-and-apply step before anything reaches the device. **If you have automations that relied on the previous immediate-write behaviour for these entities, they will need to call the Confirm Write button (or the equivalent service) after making changes.**
 
 ### Sensors (enabled by default)
 
@@ -173,6 +188,7 @@ Individual battery packs (if configured) poll on a separate, much slower 300-sec
 - **DC-coupled PV sensors** (PV1/PV2 Voltage/Current, PV Total Power) — will read zero on AC-coupled systems where solar is connected via a separate inverter rather than directly into the Hanchu's DC inputs.
 - **This integration is not supported by Hanchu.** It was developed independently by reverse-engineering the local BLE protocol.
 - **Battery pack visibility** — battery packs must be within range of, and previously discovered by, your Bluetooth proxy before they'll appear as selectable options in Configure. If a battery isn't listed, check it's showing as a discovered device under Settings → Devices & Services → Bluetooth before trying again.
+- **Staged writes are not device-level atomic** — when Confirm Write applies multiple staged changes, each is still sent as its own write within the single BLE connection, one after another. There's a brief window where an earlier change has been applied and a later one hasn't yet. If a write in the middle of a batch fails, the changes already applied are not rolled back, and the remaining staged changes stay pending for retry.
 
 ---
 
