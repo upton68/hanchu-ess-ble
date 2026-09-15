@@ -178,7 +178,6 @@ def build_write_request(key: str, value, tid: str = "10001") -> bytes:
     _LOGGER.debug("Built Hanchu write request tid=%s key=%s value=%s payload=%s", tid, key, value, encoded)
     return encoded
 
-
 def _decode_json_payload(payload: bytes) -> dict[str, Any]:
     """Decode a reply payload after discarding any leading transport bytes."""
 

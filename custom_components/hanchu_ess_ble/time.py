@@ -1,5 +1,4 @@
 """Time platform for Hanchu ESS BLE - Charge and discharge time slot controls."""
-import asyncio
 import logging
 from datetime import time
 
@@ -11,10 +10,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .pending_writes import PendingWriteBuffer
 
 _LOGGER = logging.getLogger(__name__)
-
-DEBOUNCE_SECONDS = 2
 
 TIME_SLOTS = {
     "charge_slot_1_start": {"name": "Charge Slot 1 Start", "key": "L005", "icon": "mdi:battery-clock"},
@@ -36,27 +34,35 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ):
     coordinator = hass.data[DOMAIN][entry.entry_id]
+    pending_writes = hass.data[DOMAIN][entry.entry_id + "_pending_writes"]
     entities = [
-        HanchuBleTimeSlot(coordinator, entry, slot_key, config)
+        HanchuBleTimeSlot(coordinator, pending_writes, entry, slot_key, config)
         for slot_key, config in TIME_SLOTS.items()
     ]
     async_add_entities(entities)
 
 
 class HanchuBleTimeSlot(CoordinatorEntity, TimeEntity):
-    """Represents a charge or discharge time slot for Hanchu ESS BLE."""
+    """Represents a charge or discharge time slot for Hanchu ESS BLE.
+
+    Edits are staged into the shared PendingWriteBuffer rather than written
+    to BLE immediately — nothing reaches the device until the Confirm Write
+    button is pressed, at which point this key is flushed together with
+    whatever else is staged at that moment, in one BLE connection.
+    """
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator, entry, slot_key, config):
+    def __init__(self, coordinator, pending_writes: PendingWriteBuffer, entry, slot_key, config):
         super().__init__(coordinator)
+        self._pending_writes = pending_writes
         self._entry = entry
         self._config = config
         self._attr_name = config["name"]
         self._attr_unique_id = f"{coordinator.address}_{slot_key}"
         self._attr_icon = config["icon"]
-        self._debounce_task = None
-        self._pending_value = None
+        self._pending_value: time | None = None
+        pending_writes.add_listener(self._handle_pending_change)
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -86,49 +92,31 @@ class HanchuBleTimeSlot(CoordinatorEntity, TimeEntity):
             return None
 
     async def async_set_value(self, value: time) -> None:
-        """Debounce time slot changes to avoid multiple BLE round trips."""
+        """Stage the new time in the shared buffer; nothing is written yet.
+
+        The value shows immediately (optimistic UI) via _pending_value, but
+        only reaches the device once Confirm Write is pressed. Discard
+        Changes, or the buffer's own auto-discard timeout, will clear it
+        instead — see _handle_pending_change.
+        """
         self._pending_value = value
+        seconds = (value.hour * 3600) + (value.minute * 60)
+        self._pending_writes.stage(self._config["key"], seconds)
         self.async_write_ha_state()
 
-        if self._debounce_task:
-            self._debounce_task.cancel()
+    def _handle_pending_change(self) -> None:
+        """React to the buffer changing (staged, confirmed, or discarded).
 
-        self._debounce_task = asyncio.ensure_future(self._send_after_delay())
-
-    async def _send_after_delay(self) -> None:
-        """Wait for the debounce period then send to the device."""
-        try:
-            await asyncio.sleep(DEBOUNCE_SECONDS)
-            value = self._pending_value
-            if value is None:
-                return
-            seconds = (value.hour * 3600) + (value.minute * 60)
-            try:
-                reply = await self.coordinator.client.async_write_value(
-                    self._config["key"], seconds, encrypted=True
-                )
-            except Exception as err:
-                _LOGGER.error(
-                    "Failed to set %s: %s — reverting to last known device value",
-                    self._config["name"],
-                    err,
-                )
-                self._pending_value = None
-                self.async_write_ha_state()
-                return
-
-            result = reply.as_dict().get(self._config["key"])
-            if result == 0:
-                _LOGGER.info("%s set to %s seconds", self._config["name"], seconds)
-                self._pending_value = None
-                await self.coordinator.async_request_refresh()
-            else:
-                _LOGGER.error(
-                    "%s write did not confirm success: %s — reverting to last known device value",
-                    self._config["name"],
-                    reply.as_dict(),
-                )
-                self._pending_value = None
-                self.async_write_ha_state()
-        except asyncio.CancelledError:
-            pass
+        Fires for every key's stage/confirm/discard, not just this entity's
+        own — so only act when THIS entity's key has actually transitioned
+        from pending to not-pending (i.e. it was confirmed or discarded),
+        rather than on every unrelated buffer change.
+        """
+        key = self._config["key"]
+        if self._pending_value is not None and not self._pending_writes.is_pending(key):
+            self._pending_value = None
+            # Refresh so the displayed value reflects what the device
+            # actually holds now (post-confirm) or already held (post-discard),
+            # rather than whatever the coordinator's last poll happened to see.
+            self.hass.async_create_task(self.coordinator.async_request_refresh())
+        self.async_write_ha_state()

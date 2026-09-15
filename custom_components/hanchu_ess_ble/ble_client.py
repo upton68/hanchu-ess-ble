@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 import random
+from typing import Any
 
 from bleak import BleakClient
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -22,6 +23,7 @@ from .const import (
 )
 from .protocol import (
     AES_ACK_PREFIX,
+    HanchuProtocolError,
     HanchuReply,
     HanchuReplyAssembler,
     build_handshake_command,
@@ -343,7 +345,94 @@ class HanchuBleClient:
             await client.disconnect()
             _LOGGER.debug("Disconnected from Hanchu inverter address=%s", self.address)
 
-    
+    async def async_write_values(
+        self,
+        pairs: list[tuple[str, Any]],
+        *,
+        encrypted: bool = True,
+    ) -> list[HanchuReply]:
+        """Connect once, write multiple keys sequentially, then disconnect.
+
+        Not a single atomic device-level write — each pair is still its own
+        request/reply round trip, so there's a brief window where an earlier
+        key has been applied and a later one hasn't. What this DOES fix is
+        the connection-contention cost of a separate connect/disconnect per
+        key: everything happens inside one BLE session.
+
+        Uses the same single-key encode_write_request path as
+        async_write_value (proven reliable) rather than a multi-entry
+        envelope — bench testing showed the firmware reports false success
+        for multi-entry writes without actually committing the values, so
+        that approach was abandoned in favour of this one.
+
+        Raises on the first non-zero status code rather than continuing,
+        so a partial failure is visible instead of silently swallowed.
+        """
+        async with self._connection_lock:
+            return await self._perform_with_timeout(
+                self._async_write_values_inner(pairs, encrypted=encrypted)
+            )
+
+    async def _async_write_values_inner(
+        self,
+        pairs: list[tuple[str, Any]],
+        *,
+        encrypted: bool = True,
+    ) -> list[HanchuReply]:
+        """Unwrapped body — always call via async_write_values."""
+        _LOGGER.debug(
+            "Starting Hanchu BLE multi-value write address=%s pairs=%s",
+            self.address,
+            pairs,
+        )
+        ble_device = bluetooth.async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
+        if ble_device is None:
+            raise BleakError(f"No connectable BLE device found for {self.address}")
+
+        self._session.reset()
+        self._drain_notifications()
+        client = await establish_connection(
+            BleakClientWithServiceCache, ble_device, self.name, max_attempts=3
+        )
+        try:
+            await self._async_start_notify(client)
+            if encrypted:
+                await self._async_perform_handshake(client)
+
+            replies: list[HanchuReply] = []
+            for key, value in pairs:
+                payload = self._session.encode_write_request(key, value, encrypt=encrypted)
+                _LOGGER.debug(
+                    "Writing Hanchu request (sequential multi-value) address=%s key=%s value=%s",
+                    self.address,
+                    key,
+                    value,
+                )
+                await client.write_gatt_char(
+                    BLE_WRITE_CHARACTERISTIC_UUID, payload, response=False
+                )
+                reply = await self._async_wait_for_reply(encrypted=encrypted)
+
+                status = reply.as_dict().get(key)
+                if status != 0:
+                    raise HanchuProtocolError(
+                        f"Write for key={key} value={value} did not confirm "
+                        f"success (status={status}); stopping before remaining "
+                        f"{len(pairs) - len(replies) - 1} pair(s)"
+                    )
+                replies.append(reply)
+
+            _LOGGER.debug(
+                "Completed Hanchu BLE multi-value write address=%s all confirmed",
+                self.address,
+            )
+            return replies
+        finally:
+            await self._async_stop_notify(client)
+            await client.disconnect()
+            _LOGGER.debug("Disconnected from Hanchu inverter address=%s", self.address)
 
     async def _async_start_notify(self, client: BleakClient) -> None:
         """Start notifications on the inverter read characteristic."""
