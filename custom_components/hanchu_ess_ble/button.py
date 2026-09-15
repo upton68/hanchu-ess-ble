@@ -63,8 +63,8 @@ class HanchuConfirmWriteButton(ButtonEntity):
 
     @property
     def available(self) -> bool:
-        """Only actionable while there's something staged to confirm."""
-        return self._pending_writes.has_pending
+        """Only actionable while there's something staged, and not already confirming."""
+        return self._pending_writes.has_pending and not self._pending_writes.is_confirming
 
     def _handle_pending_change(self) -> None:
         """React to the buffer changing (staged, confirmed, or discarded)."""
@@ -97,8 +97,8 @@ class HanchuDiscardChangesButton(ButtonEntity):
 
     @property
     def available(self) -> bool:
-        """Only actionable while there's something staged to discard."""
-        return self._pending_writes.has_pending
+        """Only actionable while there's something staged, and not mid-confirm."""
+        return self._pending_writes.has_pending and not self._pending_writes.is_confirming
 
     def _handle_pending_change(self) -> None:
         """React to the buffer changing (staged, confirmed, or discarded)."""
