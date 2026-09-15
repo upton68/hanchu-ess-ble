@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-15
+
+### Added 
+
+Staged writes with explicit confirmation. Changes to numeric limits, work mode, and time slot entities are now staged locally rather than written to the device immediately. A new Confirm Write button applies all currently staged changes in a single BLE connection; a new Discard Changes button cancels staged changes without writing them. Unconfirmed changes are automatically discarded after 5 minutes. Grouping related changes (e.g. a charge start and end time) into one BLE session reduces connection overhead compared to the previous per-field immediate-write behaviour.
+
+A confirm-in-progress guard prevents overlapping write attempts: both buttons become unavailable while a Confirm Write is running, so a second press cannot start a duplicate write while one is still in flight.
+
+### Changed 
+
+Manual edits to number, select, and time entities no longer write to the device immediately. Automations relying on the previous immediate-write behaviour for these entities must now trigger the Confirm Write button (or equivalent service call) after making a change.
+
+### Fixed 
+
+An earlier internal implementation of batched writes (a single multi-key BLE request covering several registers at once) was bench-tested and found to report false success — the device echoed back a success status and matching values on read-back without actually committing the change. This approach was abandoned before release in favour of the current design, which opens one BLE connection but sends each staged register as its own write in sequence, using the same single-key write path already proven reliable elsewhere in this integration.
+
 ## [1.1.2] - 2026-09-04
 
 ### Fixed
@@ -153,7 +169,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.0.11...v1.1.0
