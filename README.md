@@ -88,6 +88,7 @@ Battery packs poll on a 300-second interval, independently of the inverter's fas
 | Discharge Slot 1–3 Start/End | Discharge time periods for User-defined mode |
 | Confirm Write | Applies all currently staged changes to the device in a single BLE connection |
 | Discard Changes | Cancels all currently staged changes without writing them to the device |
+| Inverter Power | Full power on/off for the inverter (grid relay + solar + battery + EPS) — see warning below |
 
 ### New in v1.2.0: Staged Writes & Confirmation
 
@@ -100,6 +101,31 @@ Previously, changing a number, select, or time entity wrote to the device immedi
 - While a Confirm Write is in progress, both buttons become unavailable until it completes, to prevent overlapping write attempts.
 
 This groups related changes (e.g. a charge start and end time) into one BLE session instead of one per field, and gives an explicit review-and-apply step before anything reaches the device. **If you have automations that relied on the previous immediate-write behaviour for these entities, they will need to call the Confirm Write button (or the equivalent service) after making changes.**
+
+### Inverter Power Switch (P500)
+
+> ⚠️ **Read this before using the Inverter Power switch.** Turning this Off does not just disconnect from the grid — it stops **solar production, battery charge/discharge, and EPS/backup output** all together, the same as flicking the physical AC isolator switch. If there's a grid outage while the inverter is off, there is **no backup power** for the house during that window.
+
+Switching either direction takes roughly 50 seconds and several audible relay clicks to fully complete, during which the inverter's own front panel goes completely blank with no partial or intermediate indication — this is expected behaviour of the hardware itself (confirmed to match both the physical isolator switch and the official Hanchu app), not a fault in this integration.
+
+While a command is in progress, the switch shows as **unavailable** with a "transitioning" icon, and will not accept another press until the change is confirmed or a 90-second safety timeout elapses — this prevents repeated presses from piling up during the transition.
+
+**Strongly recommended**: this switch writes immediately, unlike the staged number/select/time entities above — there is no Confirm Write step to catch an accidental tap. Add a `confirmation` prompt to its dashboard card so a tap can't trigger this by mistake:
+
+```yaml
+type: tile
+entity: switch.inverter_power
+name: Inverter Power
+icon: mdi:power
+tap_action:
+  action: toggle
+  confirmation:
+    text: >-
+      This will fully power cycle the inverter — solar, battery, and EPS
+      backup will all stop for up to a minute. Are you sure?
+```
+
+Note that this confirmation prompt is a Lovelace-level safeguard only — it protects against an accidental tap on the dashboard, but does not stop an automation or script from calling the underlying service directly. Treat this switch with the same care you'd give the physical isolator.
 
 ### Sensors (enabled by default)
 
@@ -189,6 +215,7 @@ Individual battery packs (if configured) poll on a separate, much slower 300-sec
 - **This integration is not supported by Hanchu.** It was developed independently by reverse-engineering the local BLE protocol.
 - **Battery pack visibility** — battery packs must be within range of, and previously discovered by, your Bluetooth proxy before they'll appear as selectable options in Configure. If a battery isn't listed, check it's showing as a discovered device under Settings → Devices & Services → Bluetooth before trying again.
 - **Staged writes are not device-level atomic** — when Confirm Write applies multiple staged changes, each is still sent as its own write within the single BLE connection, one after another. There's a brief window where an earlier change has been applied and a later one hasn't yet. If a write in the middle of a batch fails, the changes already applied are not rolled back, and the remaining staged changes stay pending for retry.
+- **Inverter Power switch is not staged** — unlike the number/select/time entities, it writes immediately and is not part of the Confirm Write/Discard Changes flow. A dashboard confirmation prompt is strongly recommended (see above) since there is no other safeguard against an accidental tap.
 
 ---
 
@@ -204,7 +231,7 @@ For a comprehensive mapping of all known P/L-codes, see the [protocol mapping re
 
 - **[Blustery7752](https://github.com/Blustery7752/hanchu-ess-ble)** — original `hanchu-ess-ble` Home Assistant integration, which provided the BLE connection, encryption, and read foundation this fork builds on
 - **[1ulk](https://github.com/1ulk/1ulk.github.io)** — browser-based Hanchu BLE Controller, whose `hanchu-params.js` parameter registry and `hanchu-controller.js` write implementation were essential references for the write protocol and P/L-code mappings
-- **PaulDGAL** — real-world testing and community feedback that identified BLE load as the root cause of sensor unavailability issues, and proposed the tiered polling approach and the sensor value persistence improvement that became v1.0.2
+- **PaulDGAL** — real-world testing and community feedback that identified BLE load as the root cause of sensor unavailability issues, and proposed the tiered polling approach and the sensor value persistence improvement that became v1.0.2. Also carried out the initial investigation and hands-on hardware testing of the inverter power switch (P500) — including confirming its behaviour and full transition timing on real hardware — which the Inverter Power Switch feature is built on.
 
 ---
 
