@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-xx
+
+### Added 
+
+Inverter Power switch (P500), providing full on/off control of the inverter — including solar production, battery charge/discharge, and EPS/backup output. Unlike the number/select/time entities, this writes immediately and is not part of the staged Confirm Write/Discard Changes flow, since batching a power-cycle command alongside unrelated staged settings would be confusing and risky.
+
+The switch shows as unavailable with a "transitioning" icon while a command is in progress, since the inverter takes roughly 50 seconds and several relay clicks to complete the change, during which the physical panel goes completely blank with no partial indication. Repeated presses during this window are ignored, and a 90-second safety timeout clears the transitioning state even if the device never reports the expected value, so the switch cannot become permanently stuck unavailable.
+
+A Lovelace dashboard confirmation example is documented in the README — strongly recommended given this switch has no equivalent of the Confirm Write safety step used elsewhere in this integration.
+
+Register verification, and hands-on testing of the full transition behaviour and timing on real hardware, by PaulDGAL.
+
 ## [1.2.0] - 2026-09-15
 
 ### Added 
