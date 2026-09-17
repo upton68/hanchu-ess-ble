@@ -110,6 +110,8 @@ Switching either direction takes roughly 50 seconds and several audible relay cl
 
 While a command is in progress, the switch shows as **unavailable** with a "transitioning" icon, and will not accept another press until the change is confirmed or a 90-second safety timeout elapses — this prevents repeated presses from piling up during the transition.
 
+**Asymmetric confirmation timing**: real-hardware testing found that P500 reports the commanded value almost as soon as it's accepted by the device — not once the change has actually finished physically completing. Turning Off is genuinely fast (a few seconds), but turning On was observed reading back as "on" roughly 20 seconds in, well before the inverter had visibly finished its ~50-second restart sequence. To avoid the switch misleadingly showing "On" while the inverter is still restarting, it deliberately holds the transitioning state for a minimum floor per direction (10s for Off, 45s for On) before trusting a polled value match, regardless of how quickly the register itself updates. These floors were tuned against one specific inverter/firmware combination and may need adjusting for others.
+
 **Strongly recommended**: this switch writes immediately, unlike the staged number/select/time entities above — there is no Confirm Write step to catch an accidental tap. Add a `confirmation` prompt to its dashboard card so a tap can't trigger this by mistake:
 
 ```yaml
