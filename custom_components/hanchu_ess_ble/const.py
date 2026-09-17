@@ -14,8 +14,42 @@ DEFAULT_NAME = "Hanchu ESS"
 DEFAULT_SCAN_INTERVAL_SECONDS = 30
 MAX_CONSECUTIVE_FAILURES = 3
 
-PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.SENSOR, Platform.SELECT, Platform.NUMBER, Platform.TIME]
+PLATFORMS: list[Platform] = [
+    Platform.BUTTON,
+    Platform.SENSOR,
+    Platform.SELECT,
+    Platform.NUMBER,
+    Platform.TIME,
+    Platform.SWITCH,
+]
 SCAN_INTERVAL = timedelta(seconds=DEFAULT_SCAN_INTERVAL_SECONDS)
+
+# Safety ceiling for the inverter power switch's "transitioning" state.
+# Paul's real-hardware testing showed the full off/on cycle (relay clicks,
+# EPS drop, panel going blank, then restoring) takes roughly 50 seconds.
+# This is set comfortably above that observed figure so the switch clears
+# its transitioning flag and stops blocking further presses even if the
+# coordinator never sees the expected P500 value change — same "don't get
+# stuck forever" principle as the pending-write timeout in pending_writes.py.
+SWITCH_TRANSITION_TIMEOUT_SECONDS = 90
+
+# Minimum time to treat the transitioning state as still in progress,
+# regardless of what the polled P500 value shows, before each direction.
+#
+# Real-hardware testing (Dean, Sept 2026) found P500 reports the commanded
+# value almost as soon as it's accepted — not once the inverter has actually
+# finished physically completing the change. Turning Off is genuinely fast
+# (observed ~7-9s total), so a short floor is enough. Turning On is not —
+# Paul's testing showed ~50s and several relay clicks before the inverter
+# is actually back, but P500 itself was observed reading back as "on" only
+# ~20s in, well before the inverter had visibly finished restarting. Without
+# this floor, the transitioning state (and its unavailable/timer-sand UI)
+# would clear misleadingly early, showing "On" while the inverter is still
+# mid-restart.
+SWITCH_MIN_TRANSITION_SECONDS = {
+    0: 10,  # Off — confirmed fast in practice
+    1: 45,  # On — stay just under the ~50s observed full restart time
+}
 
 MANUFACTURER = "Hanchu"
 MODEL = "ESS Inverter (BLE)"
@@ -74,6 +108,10 @@ FAST_POLL_KEYS: tuple[str, ...] = (
     "P076",  # Battery Discharge Today
     # System state
     "P000",  # Phase Mode
+    "P500",  # Grid Relay / Inverter Power State — polled fast so the
+             # power switch's transitioning UI can confirm the real
+             # device state as soon as possible after a command, rather
+             # than waiting on the slow-poll rotation.
     "P651",  # Work Mode
     # Charge/discharge control — polled fast as automations depend on these
     "L017",  # Charge Power Limit
@@ -187,6 +225,7 @@ REGISTER_INFO: dict[str, str] = {
     "P241": "Calibration Value 2",
     "P498": "Measurement (Unmapped)",
     "P499": "Voltage (Unmapped)",
+    "P500": "Grid Relay / Inverter Power State",
     "P640": "Energy Counter 1",
     "P641": "Energy Counter 2",
     "P642": "Energy Counter 3",
