@@ -33,6 +33,24 @@ SCAN_INTERVAL = timedelta(seconds=DEFAULT_SCAN_INTERVAL_SECONDS)
 # stuck forever" principle as the pending-write timeout in pending_writes.py.
 SWITCH_TRANSITION_TIMEOUT_SECONDS = 90
 
+# Minimum time to treat the transitioning state as still in progress,
+# regardless of what the polled P500 value shows, before each direction.
+#
+# Real-hardware testing (Dean, Sept 2026) found P500 reports the commanded
+# value almost as soon as it's accepted — not once the inverter has actually
+# finished physically completing the change. Turning Off is genuinely fast
+# (observed ~7-9s total), so a short floor is enough. Turning On is not —
+# Paul's testing showed ~50s and several relay clicks before the inverter
+# is actually back, but P500 itself was observed reading back as "on" only
+# ~20s in, well before the inverter had visibly finished restarting. Without
+# this floor, the transitioning state (and its unavailable/timer-sand UI)
+# would clear misleadingly early, showing "On" while the inverter is still
+# mid-restart.
+SWITCH_MIN_TRANSITION_SECONDS = {
+    0: 10,  # Off — confirmed fast in practice
+    1: 45,  # On — stay just under the ~50s observed full restart time
+}
+
 MANUFACTURER = "Hanchu"
 MODEL = "ESS Inverter (BLE)"
 
