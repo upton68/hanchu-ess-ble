@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Callable
 
 from homeassistant.components.switch import SwitchEntity
@@ -13,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, SWITCH_TRANSITION_TIMEOUT_SECONDS
+from .const import DOMAIN, SWITCH_MIN_TRANSITION_SECONDS, SWITCH_TRANSITION_TIMEOUT_SECONDS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,6 +57,7 @@ class InverterPowerSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_unique_id = f"{coordinator.address}_inverter_power"
         self._transitioning = False
         self._pending_command: int | None = None
+        self._transition_started_at: float | None = None
         self._cancel_timeout: Callable[[], None] | None = None
 
     @property
@@ -135,6 +137,7 @@ class InverterPowerSwitch(CoordinatorEntity, SwitchEntity):
         )
         self._pending_command = value
         self._transitioning = True
+        self._transition_started_at = time.monotonic()
         self._start_transition_timeout()
         self.async_write_ha_state()
 
@@ -148,15 +151,46 @@ class InverterPowerSwitch(CoordinatorEntity, SwitchEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
-        """Clear the transitioning state as soon as the polled value confirms the command."""
-        if self._transitioning and self.coordinator.data and self.coordinator.data.values:
+        """Clear the transitioning state once the polled value confirms the
+        command AND the minimum floor for that direction has elapsed.
+
+        P500 was observed (real hardware, Sept 2026) to report the commanded
+        value almost as soon as it's accepted — well before the inverter has
+        actually finished physically completing the change, especially when
+        turning on (~20s poll-confirmed vs ~50s actual restart time). Without
+        the floor check, this would clear the transitioning state — and its
+        unavailable/timer-sand UI — misleadingly early.
+        """
+        if (
+            self._transitioning
+            and self._pending_command is not None
+            and self.coordinator.data
+            and self.coordinator.data.values
+        ):
             raw = self.coordinator.data.values.get(POWER_KEY)
             try:
                 current = int(float(raw)) if raw is not None else None
             except (ValueError, TypeError):
                 current = None
-            if current == self._pending_command:
+
+            elapsed = (
+                time.monotonic() - self._transition_started_at
+                if self._transition_started_at is not None
+                else 0
+            )
+            min_floor = SWITCH_MIN_TRANSITION_SECONDS.get(self._pending_command, 0)
+
+            if current == self._pending_command and elapsed >= min_floor:
                 self._clear_transition()
+            elif current == self._pending_command:
+                _LOGGER.debug(
+                    "Inverter power P500 already reads %s but only %.0fs "
+                    "elapsed (floor=%ss for this direction) — still "
+                    "treating as transitioning",
+                    current,
+                    elapsed,
+                    min_floor,
+                )
         super()._handle_coordinator_update()
 
     def _start_transition_timeout(self) -> None:
@@ -188,6 +222,7 @@ class InverterPowerSwitch(CoordinatorEntity, SwitchEntity):
     def _clear_transition(self) -> None:
         self._transitioning = False
         self._pending_command = None
+        self._transition_started_at = None
         self._cancel_transition_timeout()
         self.async_write_ha_state()
 
