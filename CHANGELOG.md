@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-21
+
+### Added
+
+New hanchu_ess_ble.confirm_write service, flushing all currently staged changes to the device in a single BLE connection and returning proper success/failure feedback (success/message). This is the automation-facing equivalent of pressing the Confirm Write button, and exists specifically so automations — such as a Predbat bridge script — can detect a failed write and retry, rather than firing a button press with no way to know whether it actually succeeded.
+
+Built to support driving Predbat's charge/discharge scheduling via this integration instead of the cloud one: a bridge script stages the relevant charge/discharge slot 1 time entities from Predbat's own sensors, then calls confirm_write to apply them together in one BLE connection, mirroring the cloud integration's write_settings-based bridge pattern. See the README's Predbat Integration section for details.
+
+Confirmed working in isolation and validated against a full live overnight charge/discharge cycle driven entirely by Predbat via this service, following several days of stable BLE signal strength.
+
 ## [1.3.0] - 2026-09-17
 
 ### Added
@@ -183,7 +193,9 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.0...v1.1.1

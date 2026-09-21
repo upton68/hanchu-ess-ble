@@ -183,6 +183,63 @@ Assistant.
 
 ---
 
+## Services
+
+In addition to the automatable entities above, this integration exposes a service for advanced use.
+
+### `hanchu_ess_ble.confirm_write`
+
+Flush all currently staged changes to the device in a single BLE connection, returning proper success/failure feedback. This is the automation-facing equivalent of pressing the **Confirm Write** button — useful when an automation (e.g. a Predbat bridge script) needs to know definitively whether a batch of staged changes was actually written, rather than relying on a button press with no response.
+
+This service takes no fields — it flushes whatever is currently staged for the configured device. If multiple Hanchu BLE devices are configured, it acts on whichever is found first.
+
+Returns:
+
+| Field | Description |
+|---|---|
+| `success` | `true` if the confirm succeeded, or if there was nothing staged to confirm; `false` if the write failed |
+| `message` | Human-readable detail — e.g. `"Confirmed"`, `"Nothing staged to confirm"`, or the error if it failed |
+
+Example automation action:
+
+```yaml
+- action: time.set_value
+  target:
+    entity_id: time.hc_yourdevice_charge_slot_1_start
+  data:
+    time: "06:00:00"
+- action: hanchu_ess_ble.confirm_write
+  response_variable: result
+- if:
+    - condition: template
+      value_template: "{{ not result.success }}"
+  then:
+    - action: notify.mobile_app_yourphone
+      data:
+        message: "Hanchu BLE write failed: {{ result.message }}"
+```
+
+---
+
+## Predbat Integration
+
+The Hanchu iESS also works with [Predbat](https://github.com/springfall2008/batpred) using this local BLE integration, in addition to, the cloud one — useful if you'd rather not depend on cloud connectivity for live battery control, or if you're already using this integration for local monitoring and want the same connection driving Predbat too.
+
+Predbat integrates with the BLE version the same way it does the cloud version — via Predbat's generic Service API — but the write side works differently, since BLE has no single-call equivalent to the cloud's `iotSet`/`write_settings`. Instead, a bridge script stages the affected charge/discharge slot 1 time entities (via `time.set_value`, the same entities documented above) and then calls `hanchu_ess_ble.confirm_write` to flush them together in one BLE connection.
+
+At a high level, the pattern is:
+
+1. Predbat's `charge_start_service`/`discharge_start_service`/`_stop_service` hooks (in `apps.yaml`) point at a small bridge script.
+2. The script sets the relevant slot 1 time entities directly from Predbat's own time sensors, always zeroing the unused pair (charge or discharge) so slot 1 only ever reflects the one action Predbat currently intends.
+3. The script calls `hanchu_ess_ble.confirm_write`, retrying once on failure and notifying if both attempts fail.
+4. A separate automation watches Predbat's charge/discharge end-time sensors and re-stages+confirms the affected slot if the window changes mid-session (e.g. Predbat recalculating).
+
+This mirrors the cloud integration's `write_settings`-based bridge pattern, adapted for BLE's per-register write model rather than a single batched API call. Full setup instructions — the bridge script, helper entities, `apps.yaml` service hooks, and window end-time automation — are being prepared for inclusion in the official [Predbat inverter setup docs](https://springfall2008.github.io/batpred/inverter-setup/#hanchu-iess) alongside the existing cloud integration guide, rather than duplicated here — check there for the current version.
+
+**Note**: unlike the cloud integration, the BLE integration writes directly to raw Hanchu register codes (`L005`/`L006`/`L011`/`L012` for charge/discharge slot 1) rather than the cloud API's `TCT_START_1`/`TDT_START_1`-style field names — anyone adapting their own cloud-based Predbat automations should map by register/entity, not by cloud field name.
+
+---
+
 ## Polling
 
 Registers are split into two tiers to reduce BLE load on the inverter:
