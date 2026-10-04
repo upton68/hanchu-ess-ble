@@ -1,0 +1,3 @@
+confirm_write:
+  name: Confirm write
+  description: Write all staged changes to the inverter in one BLE transaction. Unlike pressing the button, it can return a success flag and message to the calling script via response_variable.
