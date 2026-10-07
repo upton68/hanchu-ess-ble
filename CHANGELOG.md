@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Removed the config entry update listener, which Home Assistant reports as "has an update listener and should use it for scheduling a reload" and which stops working in Home Assistant 2026.12. The options flow now uses `OptionsFlowWithReload` and the reconfigure flow already reloaded the entry itself, so the listener only caused a second, redundant reload.
+
+### Changed
+
+- Minimum Home Assistant version is now 2025.8.0 (required for `OptionsFlowWithReload`).
+
 ## [1.4.1] - 2026-10-07
 
 ### Fixed

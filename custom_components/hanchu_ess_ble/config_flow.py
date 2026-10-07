@@ -9,7 +9,12 @@ import voluptuous as vol
 
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlowWithReload,
+)
 from homeassistant.core import callback
 import homeassistant.helpers.config_validation as cv
 
@@ -210,8 +215,12 @@ class HanchuEssBleConfigFlow(ConfigFlow, domain=DOMAIN):
         return HanchuEssBleOptionsFlow()
 
 
-class HanchuEssBleOptionsFlow(OptionsFlow):
-    """Options flow — currently just battery pack selection."""
+class HanchuEssBleOptionsFlow(OptionsFlowWithReload):
+    """Options flow — currently just battery pack selection.
+
+    OptionsFlowWithReload reloads the entry when the options change, so the
+    integration registers no update listener of its own.
+    """
 
     def _discovered_batteries(self) -> dict[str, str]:
         """Return currently discovered battery devices, keyed by address."""
