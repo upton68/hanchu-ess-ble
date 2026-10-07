@@ -7,6 +7,7 @@ number/select entity and both buttons can share it.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -30,6 +31,10 @@ class PendingWriteBuffer:
     _cancel_timeout: Callable[[], None] | None = field(default=None, init=False)
     _listeners: list[Callable[[], None]] = field(default_factory=list)
     _in_progress: bool = field(default=False, init=False)
+    # Serialises confirm() callers. A caller arriving while a flush is in
+    # flight waits its turn and then flushes whatever is still staged,
+    # instead of returning early and being reported as a success.
+    _confirm_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
 
     def stage(self, register_key: str, value: Any) -> None:
         """Called by a number/select entity instead of writing to BLE."""
@@ -56,11 +61,10 @@ class PendingWriteBuffer:
     def is_confirming(self) -> bool:
         """True while a confirm() is actively in flight.
 
-        Guards against a second Confirm press launching another
-        async_write_values call while an earlier one is still running (e.g.
-        stuck in a BLE hang) — without this, presses just queue silently on
-        the client's connection lock and pile up rather than being visibly
-        rejected, which is what happened during testing tonight.
+        Used by the Confirm/Discard buttons to go unavailable during a
+        flush, so a press can't be stacked behind a hung BLE write. Service
+        callers (confirm_write) are not rejected: confirm() serialises them
+        on _confirm_lock and each one flushes what is still staged.
         """
         return self._in_progress
 
@@ -79,35 +83,54 @@ class PendingWriteBuffer:
         code raised as HanchuProtocolError), the buffer is left intact so
         the failed edit(s) can be retried rather than silently lost.
 
-        A second call while one is already in flight is rejected outright
-        (see is_confirming) rather than being allowed to queue.
-        """
-        if not self._pending:
-            return
-        if self._in_progress:
-            _LOGGER.warning(
-                "Confirm already in progress; ignoring duplicate request"
-            )
-            return
+        Concurrent callers are serialised: a call arriving while another
+        flush is in flight waits for it, then flushes whatever is still
+        staged. Previously it returned early, so confirm_write reported
+        "Confirmed" for values that were never sent.
 
-        self._in_progress = True
-        self._notify_listeners()  # let the button go unavailable immediately
-        try:
+        Only the keys actually written are removed afterwards, and only if
+        their staged value hasn't changed during the flush. Previously the
+        whole buffer was cleared, silently dropping anything staged while
+        the BLE write was running (e.g. Predbat's charge slot arriving a
+        few seconds after an unrelated automation started a flush).
+        """
+        async with self._confirm_lock:
+            if not self._pending:
+                return
+
+            self._in_progress = True
+            self._notify_listeners()  # let the button go unavailable immediately
             pairs = list(self._pending.items())
-            await self.ble_client.async_write_values(pairs)
-        except (TimeoutError, HanchuProtocolError):
-            _LOGGER.warning(
-                "Failed to confirm %d staged register write(s); "
-                "changes remain staged for retry",
-                len(self._pending),
-            )
-            raise
-        else:
-            self._pending.clear()
-            self._cancel_pending_timeout()
-        finally:
-            self._in_progress = False
-            self._notify_listeners()
+            try:
+                await self.ble_client.async_write_values(pairs)
+            except (TimeoutError, HanchuProtocolError):
+                _LOGGER.warning(
+                    "Failed to confirm %d staged register write(s); "
+                    "changes remain staged for retry",
+                    len(self._pending),
+                )
+                raise
+            else:
+                written = 0
+                for key, value in pairs:
+                    if key in self._pending and self._pending[key] == value:
+                        del self._pending[key]
+                        written += 1
+                if self._pending:
+                    # Something was staged (or re-staged with a new value)
+                    # while we were writing. Leave it for the next confirm
+                    # and keep the auto-discard timer running for it.
+                    _LOGGER.debug(
+                        "Confirmed %d write(s); %d staged during the flush "
+                        "remain pending",
+                        written,
+                        len(self._pending),
+                    )
+                else:
+                    self._cancel_pending_timeout()
+            finally:
+                self._in_progress = False
+                self._notify_listeners()
 
     @property
     def has_pending(self) -> bool:

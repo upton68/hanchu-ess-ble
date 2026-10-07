@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- confirm_write could report success without writing anything. A call arriving while another flush was still in progress returned early, so the service answered "Confirmed" for values that never reached the inverter. Concurrent confirms are now serialised: a later caller waits for the running flush, then writes whatever is still staged.
+- Values staged while a flush was in progress were silently discarded. After a successful write the whole buffer was cleared, including anything staged during the (multi-second) BLE write. Only the keys that were actually written, with the values that were written, are now removed; anything newer stays staged for the next confirm.
+
+Together these let an unrelated automation's confirm_write wipe a Predbat charge slot staged a few seconds later, leaving the battery idle while Predbat reported "Charging".
+
 ## [1.4.0] - 2026-09-21
 
 ### Added
