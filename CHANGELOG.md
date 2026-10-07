@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-10-07
+
 ### Fixed
 
 - confirm_write could report success without writing anything. A call arriving while another flush was still in progress returned early, so the service answered "Confirmed" for values that never reached the inverter. Concurrent confirms are now serialised: a later caller waits for the running flush, then writes whatever is still staged.
@@ -200,7 +202,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.1.2...v1.2.0
