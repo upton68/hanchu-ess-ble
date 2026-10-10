@@ -31,7 +31,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id + "_pending_writes"] = pending_writes
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    # No update listener: the options flow (OptionsFlowWithReload) and the
+    # reconfigure flow (async_update_reload_and_abort) both reload the entry
+    # themselves. Registering a listener as well reloaded it twice and is
+    # reported by Home Assistant, becoming an error from 2026.12.
 
     async def handle_confirm_write(call: ServiceCall) -> ServiceResponse:
         """Flush staged writes and report success/failure — for automations.
@@ -91,8 +94,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not hass.data[DOMAIN]:
             hass.data.pop(DOMAIN)
     return unload_ok
-
-
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload a config entry."""
-    await hass.config_entries.async_reload(entry.entry_id)
