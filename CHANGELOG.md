@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-10-10
+
 ### Fixed
 
 - Removed the config entry update listener, which Home Assistant reports as "has an update listener and should use it for scheduling a reload" and which stops working in Home Assistant 2026.12. The options flow now uses `OptionsFlowWithReload` and the reconfigure flow already reloaded the entry itself, so the listener only caused a second, redundant reload.
@@ -210,7 +212,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.2.0...v1.3.0
