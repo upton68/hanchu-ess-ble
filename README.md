@@ -223,7 +223,7 @@ Example automation action:
 
 ## Predbat Integration
 
-The Hanchu iESS also works with [Predbat](https://github.com/springfall2008/batpred) using this local BLE integration, in addition to, the cloud one — useful if you'd rather not depend on cloud connectivity for live battery control, or if you're already using this integration for local monitoring and want the same connection driving Predbat too.
+The Hanchu iESS also works with [Predbat](https://github.com/springfall2008/batpred) using this local BLE integration instead of the cloud one — useful if you'd rather not depend on cloud connectivity for live battery control, or if you're already using this integration for local monitoring and want the same connection driving Predbat too.
 
 Predbat integrates with the BLE version the same way it does the cloud version — via Predbat's generic Service API — but the write side works differently, since BLE has no single-call equivalent to the cloud's `iotSet`/`write_settings`. Instead, a bridge script stages the affected charge/discharge slot 1 time entities (via `time.set_value`, the same entities documented above) and then calls `hanchu_ess_ble.confirm_write` to flush them together in one BLE connection.
 
@@ -234,7 +234,7 @@ At a high level, the pattern is:
 3. The script calls `hanchu_ess_ble.confirm_write`, retrying once on failure and notifying if both attempts fail.
 4. A separate automation watches Predbat's charge/discharge end-time sensors and re-stages+confirms the affected slot if the window changes mid-session (e.g. Predbat recalculating).
 
-This mirrors the cloud integration's `write_settings`-based bridge pattern, adapted for BLE's per-register write model rather than a single batched API call. Full setup instructions — the bridge script, helper entities, `apps.yaml` service hooks, and window end-time automation — are being prepared for inclusion in the official [Predbat inverter setup docs](https://springfall2008.github.io/batpred/inverter-setup/#hanchu-iess) alongside the existing cloud integration guide, rather than duplicated here — check there for the current version.
+This mirrors the cloud integration's `write_settings`-based bridge pattern, adapted for BLE's per-register write model rather than a single batched API call. Full setup instructions — the helpers, the bridge script, the mid-window end-time automation, the daily-energy helpers and an `apps.yaml` template — are in **[docs/predbat-bridge.md](docs/predbat-bridge.md)**. This is a community setup and is not part of the official Predbat documentation.
 
 **Note**: unlike the cloud integration, the BLE integration writes directly to raw Hanchu register codes (`L005`/`L006`/`L011`/`L012` for charge/discharge slot 1) rather than the cloud API's `TCT_START_1`/`TDT_START_1`-style field names — anyone adapting their own cloud-based Predbat automations should map by register/entity, not by cloud field name.
 
