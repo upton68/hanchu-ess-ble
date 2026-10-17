@@ -1,3 +1,21 @@
 confirm_write:
   name: Confirm write
   description: Write all staged changes to the inverter in one BLE transaction. Unlike pressing the button, it can return a success flag and message to the calling script via response_variable.
+read_registers:
+  name: Read registers
+  description: Read-only diagnostic. Reads the given register keys once from the inverter, or from a battery if battery_address is set, and returns the raw values. Does not create entities or write anything.
+  fields:
+    keys:
+      name: Register keys
+      description: Register keys to read, e.g. L108, L114, P511 (inverter) or B183 (battery).
+      required: true
+      example: '["L108", "L114", "P511"]'
+      selector:
+        object:
+    battery_address:
+      name: Battery address
+      description: Bluetooth address of a configured battery. Leave empty to read from the inverter.
+      required: false
+      example: "84:1F:E8:44:00:9E"
+      selector:
+        text:
