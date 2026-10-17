@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-17
+
 ### Added
 
 - Battery heating, disabled by default because it only applies to heated battery packs:
@@ -221,7 +223,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.3.0...v1.4.0
