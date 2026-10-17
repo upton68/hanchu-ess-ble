@@ -51,6 +51,9 @@ DISABLED_BY_DEFAULT_KEYS: set[str] = {
     "L005", "L006", "L007", "L008", "L009", "L010",
     "L011", "L012", "L013", "L014", "L015", "L016",
     "L017", "L018", "L074", "P647", "P648",
+    # Raw mirrors of the heating/recovery controls — the switches and
+    # buttons are the primary entities; these are for diagnostics only.
+    "L108", "L114", "P511",
 }
 
 SENSORS: tuple[SensorEntityDescription, ...] = (
@@ -83,6 +86,24 @@ def _register_description(
 
 
 REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
+    "L108": _register_description(
+        key="L108",
+        name="Intelligent Battery Preheating Status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        enabled_default=False,
+    ),
+    "L114": _register_description(
+        key="L114",
+        name="Battery Preheating Manual Status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        enabled_default=False,
+    ),
+    "P511": _register_description(
+        key="P511",
+        name="Battery Recovery Status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        enabled_default=False,
+    ),
     "P005": _register_description(
         key="P005",
         name="Inverter Power Limit",
@@ -413,6 +434,12 @@ BATTERY_REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
         key="B145",
         name="Hardware Version",
         entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "B183": _register_description(
+        key="B183",
+        name="Heating Control Status",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        enabled_default=False,
     ),
     "B146": _register_description(
         key="B146",

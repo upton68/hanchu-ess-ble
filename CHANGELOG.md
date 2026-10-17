@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Battery heating controls, disabled by default because they only apply to heated battery packs:
+  - **Heating Control** switch on each configured battery pack (B183). This is the first entity that writes to a battery's own BLE logger rather than the inverter.
+  - **Intelligent Battery Preheating** (L108) and **Battery Preheating Manual** (L114) switches on the inverter.
+  - The switches write immediately and show the commanded state until a poll confirms it, for up to 90 seconds. If the device disagrees after that, they revert and log a warning. Battery Preheating Manual won't trust an early read-back for 30 seconds, because the inverter only allows manual preheat below 5°C.
+- **Battery Recovery Start / Stop** buttons (P511, writes 10 / 5), disabled by default. These are buttons rather than a switch because P511 reads null when idle.
+- Raw diagnostic sensors for L108, L114, P511 and B183, disabled by default.
+- `hanchu_ess_ble.read_registers` service: a read-only diagnostic that reads any register keys from the inverter or a battery pack and returns the raw values.
+
 ## [1.4.2] - 2026-10-10
 
 ### Fixed

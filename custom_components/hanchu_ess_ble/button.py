@@ -7,10 +7,16 @@ import logging
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import (
+    BATTERY_RECOVERY_KEY,
+    BATTERY_RECOVERY_OFF,
+    BATTERY_RECOVERY_ON,
+    DOMAIN,
+)
 from .coordinator import HanchuBleCoordinator
 from .pending_writes import PendingWriteBuffer
 
@@ -37,6 +43,22 @@ async def async_setup_entry(
         [
             HanchuConfirmWriteButton(pending_writes, device_info, coordinator.address),
             HanchuDiscardChangesButton(pending_writes, device_info, coordinator.address),
+            HanchuBatteryRecoveryButton(
+                coordinator,
+                device_info,
+                unique_suffix="battery_recovery_start",
+                name="Battery Recovery Start",
+                icon="mdi:battery-sync",
+                value=BATTERY_RECOVERY_ON,
+            ),
+            HanchuBatteryRecoveryButton(
+                coordinator,
+                device_info,
+                unique_suffix="battery_recovery_stop",
+                name="Battery Recovery Stop",
+                icon="mdi:battery-remove-outline",
+                value=BATTERY_RECOVERY_OFF,
+            ),
         ]
     )
 
@@ -107,3 +129,58 @@ class HanchuDiscardChangesButton(ButtonEntity):
     async def async_press(self) -> None:
         """Discard the staged writes."""
         self._pending_writes.discard()
+
+
+class HanchuBatteryRecoveryButton(ButtonEntity):
+    """Writes P511 (Battery Recovery) — 10 to start, 5 to stop.
+
+    A button rather than a switch because P511 reads back as null when no
+    recovery is in progress (confirmed on real hardware, Oct 2026), so a
+    switch would sit at "unknown" permanently. The raw value is exposed
+    separately as the Battery Recovery Status diagnostic sensor.
+
+    This is a rescue tool for a battery whose BMS has shut down after deep
+    over-discharge; Hanchu's own menu notes it needs at least 500W of PV
+    input to operate. It is not something to run routinely, so both buttons
+    are disabled by default and write immediately (no Confirm Write step).
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: HanchuBleCoordinator,
+        device_info: DeviceInfo,
+        *,
+        unique_suffix: str,
+        name: str,
+        icon: str,
+        value: int,
+    ) -> None:
+        """Initialise the recovery button."""
+        self._coordinator = coordinator
+        self._value = value
+        self._attr_device_info = device_info
+        self._attr_unique_id = f"{coordinator.address}_{unique_suffix}"
+        self._attr_name = name
+        self._attr_icon = icon
+
+    async def async_press(self) -> None:
+        """Write the recovery value to the inverter."""
+        key = BATTERY_RECOVERY_KEY
+        try:
+            reply = await self._coordinator.client.async_write_value(
+                key, self._value, encrypted=True
+            )
+        except Exception as err:  # noqa: BLE001 — surface any failure to the UI
+            raise HomeAssistantError(f"Failed to write {key}={self._value}: {err}") from err
+
+        status = reply.as_dict().get(key)
+        if status != 0:
+            raise HomeAssistantError(
+                f"Device did not confirm {key}={self._value} (reply: {reply.as_dict()})"
+            )
+        _LOGGER.warning("Battery Recovery command sent: %s=%s", key, self._value)
+        await self._coordinator.async_request_refresh()
