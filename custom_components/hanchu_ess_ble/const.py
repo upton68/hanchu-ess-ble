@@ -51,7 +51,7 @@ SWITCH_MIN_TRANSITION_SECONDS = {
     1: 45,  # On — stay just under the ~50s observed full restart time
 }
 
-# Register switches (L108 / L114 / B183): how long to keep showing the
+# Register switches (L108 / L114): how long to keep showing the
 # commanded state after a successful write while waiting for a poll to
 # confirm it. If the device still reports something else when this
 # expires, the switch falls back to the real value and logs a warning
@@ -311,7 +311,7 @@ BATTERY_POLL_KEYS: tuple[str, ...] = (
     "B145",  # Hardware Version
     "B146",  # Battery Model
     "B148",  # Firmware Version
-    "B183",  # Heating Control Switch (1 = on, 0 = off) — heated packs only
+    "B183",  # Heating Control Switch (1 = on, 0 = off) — heated packs only, read-only
 )
 
 # Fields that only need to be read once at setup and then cached, rather than

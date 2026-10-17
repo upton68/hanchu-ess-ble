@@ -134,19 +134,21 @@ Note that this confirmation prompt is a Lovelace-level safeguard only — it pro
 
 ### Battery Heating (L108 / L114 / B183)
 
-> ℹ️ **Only for systems with heated battery packs.** These entities are created for everyone but **disabled by default**. If your batteries don't have built-in heating, leave them disabled — they won't do anything useful. Enable them from the device page if yours do.
+> ℹ️ **Only for systems with heated battery packs.** These entities are created for everyone but **disabled by default**. If your batteries don't have built-in heating, leave them disabled, because they won't do anything useful. In Hanchu's own configuration, the battery heating setting is offered for these battery models: HOME-ESS-LV-5.12K-M, HOME-ESS-LV-9.4K-H, POLA-16L-P-4G and POLA-16L-P.
 
 Battery heating is controlled in two places, and both need to be on for heating to work:
 
 | Entity | Device | Register | What it does |
 |---|---|---|---|
-| Heating Control | Each battery pack | B183 | The battery's own master switch for its heating hardware. Requires the pack to be configured under **Adding individual battery packs**. |
-| Intelligent Battery Preheating | Inverter | L108 | Lets the inverter warm the batteries automatically when they're cold. |
-| Battery Preheating Manual | Inverter | L114 | Turns preheating on manually. Hanchu's own menu notes this **only works below 5°C with no battery fault**. |
+| Heating Control | Each battery pack | B183 | **Read-only sensor.** Shows the battery's own master switch for its heating hardware (1 = on, 0 = off). Requires the pack to be configured under **Adding individual battery packs**. |
+| Intelligent Battery Preheating | Inverter | L108 | Switch. Lets the inverter warm the batteries automatically when they're cold. |
+| Battery Preheating Manual | Inverter | L114 | Switch. Turns preheating on manually. Hanchu's own menu notes this **only works below 5°C with no battery fault**. |
 
-All three write immediately when toggled (there's no Confirm Write step). After a write, the switch shows the new state until a poll confirms it, for up to 90 seconds. If the device still reports something different after that, the switch reverts to the real value and a warning is logged. Expect this for **Battery Preheating Manual** in mild weather, because the inverter refuses manual preheat above 5°C.
+**Why Heating Control is read-only:** the battery acknowledges a write to B183 over Bluetooth but doesn't apply it, so the value stays the same. Changing it through Hanchu's own app and cloud was also unreliable in testing. Rather than offer a switch that doesn't work, the integration shows the value so you can check heating is enabled. If it reads 0, change it with the Hanchu app or your installer.
 
-Each register also has a raw diagnostic sensor (disabled by default) showing the value the device reports.
+The two inverter switches write immediately when toggled (there's no Confirm Write step). After a write, the switch shows the new state until a poll confirms it, for up to 90 seconds. If the device still reports something different after that, the switch reverts to the real value and a warning is logged. Expect this for **Battery Preheating Manual** in mild weather, because the inverter refuses manual preheat above 5°C (the Hanchu app reports "Setting Failed" in the same situation).
+
+Each inverter register also has a raw diagnostic sensor (disabled by default) showing the value the device reports.
 
 ### Battery Recovery (P511)
 

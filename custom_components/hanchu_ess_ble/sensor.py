@@ -435,9 +435,12 @@ BATTERY_REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
         name="Hardware Version",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    # Read-only: the battery acknowledges BLE writes to B183 but doesn't
+    # apply them (Oct 2026), and even Hanchu's app/cloud change it
+    # unreliably, so it's exposed as a status sensor rather than a switch.
     "B183": _register_description(
         key="B183",
-        name="Heating Control Status",
+        name="Heating Control",
         entity_category=EntityCategory.DIAGNOSTIC,
         enabled_default=False,
     ),

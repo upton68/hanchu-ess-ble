@@ -19,38 +19,3 @@ read_registers:
       example: "84:1F:E8:44:00:9E"
       selector:
         text:
-write_register:
-  name: Write register (debug)
-  description: DEBUG ONLY. Writes one register immediately, with no confirmation step, then reads it back. Returns the device's raw reply and the read-back value. Writing the wrong register can change inverter or battery behaviour, so use only for investigation.
-  fields:
-    key:
-      name: Register key
-      description: Register to write, e.g. B183.
-      required: true
-      example: "B183"
-      selector:
-        text:
-    value:
-      name: Value
-      description: Value to write.
-      required: true
-      example: "0"
-      selector:
-        text:
-    value_type:
-      name: Value type
-      description: Send the value as a JSON integer (default) or a string.
-      required: false
-      default: int
-      selector:
-        select:
-          options:
-            - int
-            - string
-    battery_address:
-      name: Battery address
-      description: Bluetooth address of a configured battery. Leave empty to write to the inverter.
-      required: false
-      example: "84:1F:E8:44:00:9E"
-      selector:
-        text:

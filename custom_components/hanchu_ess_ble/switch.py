@@ -1,4 +1,4 @@
-"""Switch platform for Hanchu ESS BLE — inverter power (P500) and battery heating."""
+"""Switch platform for Hanchu ESS BLE — inverter power (P500) and battery preheating."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from .const import (
     SWITCH_MIN_TRANSITION_SECONDS,
     SWITCH_TRANSITION_TIMEOUT_SECONDS,
 )
-from .entity import HanchuBatteryCoordinatorEntity, HanchuCoordinatorEntity
+from .entity import HanchuCoordinatorEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ INVERTER_REGISTER_SWITCHES: dict[str, dict] = {
         "key": "L108",
         "icon": "mdi:radiator",
         "revert_hint": (
-            "check that Heating Control is on for each battery pack"
+            "check that each battery pack's Heating Control sensor reads 1"
         ),
     },
     "battery_preheating_manual": {
@@ -53,13 +53,6 @@ INVERTER_REGISTER_SWITCHES: dict[str, dict] = {
     },
 }
 
-# Per-battery heating master switch (written to each battery's own logger).
-BATTERY_HEATING_SWITCH: dict = {
-    "name": "Heating Control",
-    "key": "B183",
-    "icon": "mdi:thermometer-plus",
-    "revert_hint": "this battery pack may not have heating hardware",
-}
 
 
 async def async_setup_entry(
@@ -70,10 +63,6 @@ async def async_setup_entry(
     entities.extend(
         HanchuInverterRegisterSwitch(coordinator, switch_key, config)
         for switch_key, config in INVERTER_REGISTER_SWITCHES.items()
-    )
-    entities.extend(
-        HanchuBatteryRegisterSwitch(battery_coordinator, "heating_control", BATTERY_HEATING_SWITCH)
-        for battery_coordinator in coordinator.battery_coordinators
     )
     async_add_entities(entities)
 
@@ -283,13 +272,12 @@ class InverterPowerSwitch(CoordinatorEntity, SwitchEntity):
 
 
 class _RegisterSwitchLogic:
-    """Shared 1/0 register switch behaviour for the heating switches.
+    """Shared 1/0 register switch behaviour for the preheating switches.
 
     Writes immediately via the client's single-key write path (the same
     one the Inverter Power switch uses) rather than staging through
     PendingWriteBuffer: these are standalone on/off settings with no
-    related fields to batch with, and the battery switch writes to a
-    different BLE device that the inverter's buffer can't reach anyway.
+    related fields to batch with.
 
     After a successful write the switch shows the commanded state until a
     poll confirms it, or until REGISTER_SWITCH_CONFIRM_TIMEOUT_SECONDS
@@ -426,12 +414,3 @@ class HanchuInverterRegisterSwitch(_RegisterSwitchLogic, HanchuCoordinatorEntity
         super().__init__(coordinator)
         self._init_register_switch(coordinator.address, switch_key, config)
 
-
-class HanchuBatteryRegisterSwitch(
-    _RegisterSwitchLogic, HanchuBatteryCoordinatorEntity, SwitchEntity
-):
-    """1/0 register switch on an individual battery pack (B183)."""
-
-    def __init__(self, coordinator, switch_key: str, config: dict) -> None:
-        super().__init__(coordinator)
-        self._init_register_switch(coordinator.address, switch_key, config)
