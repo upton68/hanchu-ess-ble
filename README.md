@@ -89,6 +89,9 @@ Battery packs poll on a 300-second interval, independently of the inverter's fas
 | Confirm Write | Applies all currently staged changes to the device in a single BLE connection |
 | Discard Changes | Cancels all currently staged changes without writing them to the device |
 | Inverter Power | Full power on/off for the inverter (grid relay + solar + battery + EPS) — see warning below |
+| Intelligent Battery Preheating | Switch (L108), disabled by default — heated batteries only, see below |
+| Battery Preheating Manual | Switch (L114), disabled by default — heated batteries only, see below |
+| Battery Recovery Start / Stop | Buttons (P511), disabled by default — deep-discharge rescue only, see below |
 
 ### New in v1.2.0: Staged Writes & Confirmation
 
@@ -128,6 +131,30 @@ tap_action:
 ```
 
 Note that this confirmation prompt is a Lovelace-level safeguard only — it protects against an accidental tap on the dashboard, but does not stop an automation or script from calling the underlying service directly. Treat this switch with the same care you'd give the physical isolator.
+
+### Battery Heating (L108 / L114 / B183)
+
+> ℹ️ **Only for systems with heated battery packs.** These entities are created for everyone but **disabled by default**. If your batteries don't have built-in heating, leave them disabled, because they won't do anything useful. In Hanchu's own configuration, the battery heating setting is offered for these battery models: HOME-ESS-LV-5.12K-M, HOME-ESS-LV-9.4K-H, POLA-16L-P-4G and POLA-16L-P.
+
+Battery heating is controlled in two places, and both need to be on for heating to work:
+
+| Entity | Device | Register | What it does |
+|---|---|---|---|
+| Heating Control | Each battery pack | B183 | **Read-only sensor.** Shows the battery's own master switch for its heating hardware (1 = on, 0 = off). Requires the pack to be configured under **Adding individual battery packs**. |
+| Intelligent Battery Preheating | Inverter | L108 | Switch. Lets the inverter warm the batteries automatically when they're cold. |
+| Battery Preheating Manual | Inverter | L114 | Switch. Turns preheating on manually. Hanchu's own menu notes this **only works below 5°C with no battery fault**. |
+
+**Why Heating Control is read-only:** the battery acknowledges a write to B183 over Bluetooth but doesn't apply it, so the value stays the same. Changing it through Hanchu's own app and cloud was also unreliable in testing. Rather than offer a switch that doesn't work, the integration shows the value so you can check heating is enabled. If it reads 0, change it with the Hanchu app or your installer.
+
+The two inverter switches write immediately when toggled (there's no Confirm Write step). After a write, the switch shows the new state until a poll confirms it, for up to 90 seconds. If the device still reports something different after that, the switch reverts to the real value and a warning is logged. Expect this for **Battery Preheating Manual** in mild weather, because the inverter refuses manual preheat above 5°C (the Hanchu app reports "Setting Failed" in the same situation).
+
+Each inverter register also has a raw diagnostic sensor (disabled by default) showing the value the device reports.
+
+### Battery Recovery (P511)
+
+> ⚠️ **Rescue tool only.** Battery Recovery is for a battery whose BMS has shut itself down after deep over-discharge and won't wake up on its own. Don't use it during normal operation. Hanchu's own menu notes it needs **at least 500W of PV input** to operate.
+
+This is exposed as two buttons, **Battery Recovery Start** (writes 10) and **Battery Recovery Stop** (writes 5), rather than a switch. That's because P511 reads back as empty (null) when no recovery is in progress, so a switch would sit at "unknown". Both buttons are disabled by default and write immediately. The **Battery Recovery Status** diagnostic sensor (disabled by default) shows the raw value P511 reports.
 
 ### Sensors (enabled by default)
 
@@ -185,7 +212,7 @@ Assistant.
 
 ## Services
 
-In addition to the automatable entities above, this integration exposes a service for advanced use.
+In addition to the automatable entities above, this integration exposes services for advanced use.
 
 ### `hanchu_ess_ble.confirm_write`
 
@@ -217,6 +244,24 @@ Example automation action:
     - action: notify.mobile_app_yourphone
       data:
         message: "Hanchu BLE write failed: {{ result.message }}"
+```
+
+### `hanchu_ess_ble.read_registers`
+
+Read-only diagnostic. Reads any register keys once, from the inverter or from a configured battery pack, and returns the raw values. It doesn't create entities or write anything, and it uses the same BLE connection lock as normal polling, so it never overlaps a poll. Useful for checking whether a register is supported on your hardware before asking for it to be added.
+
+| Field | Description |
+|---|---|
+| `keys` | List of register keys, e.g. `["L108", "L114", "P511"]` |
+| `battery_address` | Optional. Bluetooth address of a configured battery pack. Leave empty to read from the inverter. |
+
+Returns `success`, `device`, `values` (key → raw value) and `missing` (keys the device didn't answer). Run it from **Developer Tools → Actions** with "Return response" ticked:
+
+```yaml
+action: hanchu_ess_ble.read_registers
+data:
+  keys: ["B183"]
+  battery_address: "84:1F:E8:44:00:9E"
 ```
 
 ---

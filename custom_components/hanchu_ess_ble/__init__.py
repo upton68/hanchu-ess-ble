@@ -81,6 +81,74 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             supports_response=SupportsResponse.OPTIONAL,
         )
 
+    async def handle_read_registers(call: ServiceCall) -> ServiceResponse:
+        """Read arbitrary registers once, without creating any entities.
+
+        Read-only diagnostic for probing registers that aren't in the
+        integration yet (e.g. L108/L114/P511 on the inverter, B183 on a
+        battery). Reuses the existing coordinator's BLE client, so it waits
+        on the same connection lock as normal polling and never overlaps it.
+        Keys are requested in their own transaction, separate from the
+        normal poll batch, so an unsupported key can't break regular polling.
+        """
+        raw_keys = call.data.get("keys", [])
+        if isinstance(raw_keys, str):
+            raw_keys = raw_keys.split(",")
+        keys = [str(k).strip().upper() for k in raw_keys if str(k).strip()]
+        if not keys:
+            return {"success": False, "message": "No register keys given"}
+        battery_address = call.data.get("battery_address")
+
+        inverter: HanchuBleCoordinator | None = None
+        for value in hass.data.get(DOMAIN, {}).values():
+            if isinstance(value, HanchuBleCoordinator):
+                inverter = value
+                break
+        if inverter is None:
+            return {"success": False, "message": "No Hanchu ESS BLE device configured"}
+
+        if battery_address:
+            target = next(
+                (
+                    bc
+                    for bc in inverter.battery_coordinators
+                    if bc.address.upper() == str(battery_address).upper()
+                ),
+                None,
+            )
+            if target is None:
+                return {
+                    "success": False,
+                    "message": f"No configured battery with address {battery_address}",
+                }
+            client = target.client
+            device = f"battery {target.address}"
+        else:
+            client = inverter.client
+            device = f"inverter {inverter.address}"
+
+        try:
+            reply = await client.async_read_values(keys, encrypted=True)
+        except Exception as err:  # noqa: BLE001 — report any failure back
+            return {"success": False, "device": device, "keys": keys, "message": repr(err)}
+
+        values = reply.as_dict()
+        return {
+            "success": True,
+            "device": device,
+            "code": reply.code,
+            "values": values,
+            "missing": [k for k in keys if k not in values],
+        }
+
+    if not hass.services.has_service(DOMAIN, "read_registers"):
+        hass.services.async_register(
+            DOMAIN,
+            "read_registers",
+            handle_read_registers,
+            supports_response=SupportsResponse.ONLY,
+        )
+
     return True
 
 

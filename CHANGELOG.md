@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-17
+
+### Added
+
+- Battery heating, disabled by default because it only applies to heated battery packs:
+  - **Intelligent Battery Preheating** (L108) and **Battery Preheating Manual** (L114) switches on the inverter. They write immediately and show the commanded state until a poll confirms it, for up to 90 seconds. If the device disagrees after that, they revert and log a warning. Battery Preheating Manual won't trust an early read-back for 30 seconds, because the inverter only allows manual preheat below 5°C.
+  - **Heating Control** sensor on each configured battery pack (B183), read-only. The battery acknowledges Bluetooth writes to B183 but doesn't apply them.
+- **Battery Recovery Start / Stop** buttons (P511, writes 10 / 5), disabled by default. These are buttons rather than a switch because P511 reads null when idle.
+- Raw diagnostic sensors for L108, L114 and P511, disabled by default.
+- `hanchu_ess_ble.read_registers` service: a read-only diagnostic that reads any register keys from the inverter or a battery pack and returns the raw values.
+
 ## [1.4.2] - 2026-10-10
 
 ### Fixed
@@ -212,7 +223,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.3.0...v1.4.0

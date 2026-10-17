@@ -51,6 +51,19 @@ SWITCH_MIN_TRANSITION_SECONDS = {
     1: 45,  # On — stay just under the ~50s observed full restart time
 }
 
+# Register switches (L108 / L114): how long to keep showing the
+# commanded state after a successful write while waiting for a poll to
+# confirm it. If the device still reports something else when this
+# expires, the switch falls back to the real value and logs a warning
+# (expected for L114 above 5°C, where the inverter refuses manual preheat).
+REGISTER_SWITCH_CONFIRM_TIMEOUT_SECONDS = 90
+
+# Battery Recovery (P511) write values. Unlike the 1/0 switches, the
+# inverter uses 10/5 for this register, and reports null when idle.
+BATTERY_RECOVERY_KEY = "P511"
+BATTERY_RECOVERY_ON = 10
+BATTERY_RECOVERY_OFF = 5
+
 MANUFACTURER = "Hanchu"
 MODEL = "ESS Inverter (BLE)"
 
@@ -119,6 +132,11 @@ FAST_POLL_KEYS: tuple[str, ...] = (
     "P647",  # Maximum Charge SOC
     "P648",  # On-Grid Battery Discharge Minimum
     "L074",  # Max SOC Limit (grid-to-battery charge)
+    # Battery heating / recovery — polled fast so the switches and the
+    # recovery status reflect a command within one cycle of it being sent.
+    "L108",  # Intelligent Battery Preheating (1 = on, 0 = off)
+    "L114",  # Battery Preheating Manual Toggle (1 = on, 0 = off)
+    "P511",  # Battery Recovery (10 = on, 5 = off; reads null when idle)
     # Charge slots
     "L005",  # Charge Slot 1 Start
     "L006",  # Charge Slot 1 End
@@ -254,6 +272,9 @@ REGISTER_INFO: dict[str, str] = {
     "L023": "DTU Firmware Version",
     "L034": "Meter Type",
     "L074": "Max SOC Limit (Grid Charge)",
+    "L108": "Intelligent Battery Preheating",
+    "L114": "Battery Preheating Manual Toggle",
+    "P511": "Battery Recovery",
     "L094": "RTC Unix Epoch Timestamp",
     "L096": "RTC Daylight Saving Offset",
 }
@@ -273,7 +294,7 @@ BATTERY_SCAN_INTERVAL = timedelta(seconds=DEFAULT_BATTERY_SCAN_INTERVAL_SECONDS)
 
 MODEL_BATTERY = "ESS Battery (BLE)"
 
-# All battery values are cheap enough (10 keys, single connection, verified
+# All battery values are cheap enough (11 keys, single connection, verified
 # against real hardware) to read in one request every cycle — no fast/slow
 # tiering needed like the inverter. Static fields (serial/HW/model/firmware)
 # are still only meaningfully read once at startup by the coordinator, since
@@ -290,6 +311,7 @@ BATTERY_POLL_KEYS: tuple[str, ...] = (
     "B145",  # Hardware Version
     "B146",  # Battery Model
     "B148",  # Firmware Version
+    "B183",  # Heating Control Switch (1 = on, 0 = off) — heated packs only, read-only
 )
 
 # Fields that only need to be read once at setup and then cached, rather than
@@ -312,4 +334,5 @@ BATTERY_REGISTER_INFO: dict[str, str] = {
     "B145": "Hardware Version",
     "B146": "Battery Model",
     "B148": "Firmware Version",
+    "B183": "Heating Control Switch",
 }
