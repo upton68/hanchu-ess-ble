@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Inverter model detection. The model name reported by the inverter (P003, e.g.
+  "HESS-HY-S-5.0K") is looked up in a table of all 32 Hanchu inverter models,
+  shared with the hanchu-ess-ha cloud integration.
+  - The device card shows the real model name.
+  - New diagnostic sensors: **Inverter Model**, **Rated AC Power** and
+    **Battery Power Maximum** (Predbat's `inverter_limit` and `battery_rate_max`).
+  - P003 is read on the first poll cycles instead of waiting for the slow-poll
+    rotation, and the integration stops asking after five cycles if the
+    inverter doesn't report it.
+
+### Changed
+- The upper limit of Charge and Discharge Power Limit now comes from the model
+  table when the model is recognised, falling back to P005 otherwise. P005 is
+  only confirmed on a 5 kW unit; if it reports the AC rating elsewhere, it would
+  be wrong for single-phase 3.0K–6.0K units, whose battery maximum is 5000 W.
+- All inverter entities now report the same device model. Previously some
+  used "ESS Device (Local BLE)" and others "ESS Inverter (BLE)".
+
 ## [1.5.0] - 2026-10-17
 
 ### Added

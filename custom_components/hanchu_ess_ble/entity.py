@@ -5,7 +5,8 @@ from __future__ import annotations
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, MANUFACTURER, MODEL, MODEL_BATTERY
+from .const import DOMAIN, MANUFACTURER, MODEL_BATTERY
+from .models import inverter_device_model
 from .coordinator import HanchuBleCoordinator, HanchuBatteryCoordinator
 
 class HanchuBatteryCoordinatorEntity(CoordinatorEntity[HanchuBatteryCoordinator]):
@@ -55,7 +56,7 @@ class HanchuCoordinatorEntity(CoordinatorEntity[HanchuBleCoordinator]):
             identifiers={(DOMAIN, self.coordinator.address)},
             connections={(CONNECTION_BLUETOOTH, self.coordinator.address)},
             manufacturer=MANUFACTURER,
-            model=MODEL,
+            model=inverter_device_model(self.coordinator),
             name=self.coordinator.data.configured_name,
         )
 
