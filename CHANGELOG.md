@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-21
+
 ### Added
 - Inverter model detection. The model name reported by the inverter (P003, e.g.
   "HESS-HY-S-5.0K") is looked up in a table of all 32 Hanchu inverter models,
@@ -242,7 +244,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.2...v1.5.0
 [1.4.2]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.0...v1.4.1
