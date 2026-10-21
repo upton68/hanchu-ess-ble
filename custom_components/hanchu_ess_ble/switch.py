@@ -15,6 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .models import inverter_device_model
 from .const import (
     DOMAIN,
     REGISTER_SWITCH_CONFIRM_TIMEOUT_SECONDS,
@@ -105,7 +106,7 @@ class InverterPowerSwitch(CoordinatorEntity, SwitchEntity):
             identifiers={(DOMAIN, self.coordinator.address)},
             name=self.coordinator.configured_name,
             manufacturer="Hanchu",
-            model="ESS Device (Local BLE)",
+            model=inverter_device_model(self.coordinator),
         )
 
     @property

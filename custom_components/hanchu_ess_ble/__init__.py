@@ -5,10 +5,18 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+    callback,
+)
+from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN, PLATFORMS
 from .coordinator import HanchuBleCoordinator
+from .models import model_from_values
 from .pending_writes import PendingWriteBuffer
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,6 +39,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id + "_pending_writes"] = pending_writes
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    @callback
+    def _async_sync_device_model() -> None:
+        """Write the inverter model (P003) to the device registry once known.
+
+        Home Assistant only reads an entity's device_info when the entity is
+        first added. P003 may not have been read by then (it can arrive a
+        cycle or two after startup), which would leave the device card on
+        the generic model name, so update the registry entry directly.
+        """
+        values = coordinator.data.values if coordinator.data else None
+        model = model_from_values(values)
+        if model is None:
+            return
+        device_registry = dr.async_get(hass)
+        device = device_registry.async_get_device(
+            identifiers={(DOMAIN, coordinator.address)}
+        )
+        if device is not None and device.model != model.name:
+            device_registry.async_update_device(device.id, model=model.name)
+            _LOGGER.debug("Set device model to %s", model.name)
+
+    entry.async_on_unload(coordinator.async_add_listener(_async_sync_device_model))
+    _async_sync_device_model()
     # No update listener: the options flow (OptionsFlowWithReload) and the
     # reconfigure flow (async_update_reload_and_abort) both reload the entry
     # themselves. Registering a listener as well reloaded it twice and is

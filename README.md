@@ -79,8 +79,8 @@ Battery packs poll on a 300-second interval, independently of the inverter's fas
 | Entity | Description |
 |---|---|
 | Work Mode | Select: Self-consumption, Backup, User-defined, Off-grid |
-| Charge Power Limit | Maximum battery charge power (W) |
-| Discharge Power Limit | Maximum battery discharge power (W) |
+| Charge Power Limit | Maximum battery charge power (W). Its upper limit comes from your inverter model, see below |
+| Discharge Power Limit | Maximum battery discharge power (W). Its upper limit comes from your inverter model, see below |
 | Maximum Charge SOC | Upper SOC limit — battery charges to this level then stops (%) |
 | Minimum Discharge SOC | On-grid hard floor — battery will not discharge below this level (%) |
 | Grid to Battery Charge Maximum | Upper SOC limit for grid-to-battery charging (%) |
@@ -171,6 +171,27 @@ This is exposed as two buttons, **Battery Recovery Start** (writes 10) and **Bat
 | L1 Voltage | Grid line voltage (V) |
 | L1 Current | Grid line current (A) |
 | EPS Voltage/Current/Frequency/Power | Emergency power supply readings |
+| Inverter Model, Rated AC Power, Battery Power Maximum | Diagnostic. See below |
+
+### Inverter model detection
+
+The inverter reports its model name over Bluetooth (register P003, e.g. `HESS-HY-S-5.0K`). The integration looks it up in a table of Hanchu models, the same table the [hanchu-ess-ha](https://github.com/upton68/hanchu-ess-ha) cloud integration uses, and:
+
+- **Shows the real model name** on the device card.
+- **Sets the upper limit of Charge and Discharge Power Limit** to the model's battery maximum.
+- **Provides three diagnostic sensors:** Inverter Model, Rated AC Power and Battery Power Maximum.
+
+Battery power and AC rating aren't always the same:
+
+| Inverter | Battery Power Maximum | Rated AC Power |
+|---|---|---|
+| Single-phase HESS-HY-S-3.0K / 3.68K / 4.0K / 5.0K / 6.0K | 5000 W | 3000 / 3680 / 4000 / 5000 / 6000 W |
+| Single-phase HESS-HY-S-7.0K / 8.0K / 10.0K | Same as AC | 7000 / 8000 / 10000 W |
+| Three-phase HESS-HY-T and commercial CESS-HY models | Same as AC | Model rating |
+
+For Predbat, **Battery Power Maximum** is the value for `battery_rate_max`, and **Rated AC Power** is the value for `inverter_limit`.
+
+If the model isn't in the table, the power limits fall back to the inverter's own Inverter Power Limit (P005), as before, and the two power sensors show as unknown. The Inverter Model sensor still shows whatever the inverter reports. If yours isn't recognised, please open an issue with that value.
 
 ### Sensors (disabled by default)
 

@@ -9,6 +9,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .models import inverter_device_model
 from .const import DOMAIN
 from .pending_writes import PendingWriteBuffer
 
@@ -70,7 +71,7 @@ class HanchuBleTimeSlot(CoordinatorEntity, TimeEntity):
             identifiers={(DOMAIN, self.coordinator.address)},
             name=self.coordinator.configured_name,
             manufacturer="Hanchu",
-            model="ESS Device (Local BLE)",
+            model=inverter_device_model(self.coordinator),
         )
 
     @property

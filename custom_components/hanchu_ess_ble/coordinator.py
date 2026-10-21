@@ -17,6 +17,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .ble_client import HanchuBleClient, HanchuBleSnapshot, snapshot_from_service_info
+from .models import MODEL_KEY, MODEL_READ_ATTEMPTS
 from .const import (
     BATTERY_POLL_KEYS,
     BATTERY_SCAN_INTERVAL,
@@ -70,6 +71,9 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         # Tracks which SLOW_POLL_KEYS entry to request this cycle.
         # Advances by one each cycle, wrapping at len(SLOW_POLL_KEYS).
         self._slow_poll_index: int = 0
+        # Cycles left in which to request the inverter model (P003) if it
+        # hasn't been read yet; stops asking on firmware that doesn't report it.
+        self._model_read_attempts_left: int = MODEL_READ_ATTEMPTS
         # Running failure count — reset on each successful read.
         self._consecutive_failures: int = 0
         # Battery sub-coordinators, one per configured battery address —
@@ -159,6 +163,14 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         # Build the key list for this cycle: all fast keys plus one slow key.
         slow_key = SLOW_POLL_KEYS[self._slow_poll_index]
         poll_keys = list(FAST_POLL_KEYS) + [slow_key]
+        # The inverter model (P003) never changes, but power limits and the
+        # device name depend on it, so read it every cycle until it's known
+        # rather than waiting minutes for the slow-poll rotation.
+        if self._model_read_attempts_left > 0 and not (
+            self.data and self.data.values and self.data.values.get(MODEL_KEY)
+        ):
+            self._model_read_attempts_left -= 1
+            poll_keys.append(MODEL_KEY)
         _LOGGER.debug(
             "Cycle slow_poll_index=%d polling slow key=%s",
             self._slow_poll_index,

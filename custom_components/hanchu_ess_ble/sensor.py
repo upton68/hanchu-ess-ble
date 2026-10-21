@@ -25,6 +25,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .models import MODEL_KEY, model_from_values
 from .const import BATTERY_POLL_KEYS, FAST_POLL_KEYS, SLOW_POLL_KEYS, DOMAIN
 from .coordinator import HanchuBatteryCoordinator, HanchuBleCoordinator
 from .entity import HanchuBatteryCoordinatorEntity, HanchuCoordinatorEntity
@@ -497,6 +498,10 @@ async def async_setup_entry(
         ),
     ]
 
+    entities.extend(
+        HanchuModelSensor(coordinator, key) for key in MODEL_SENSORS
+    )
+
     # One set of battery entities per configured battery coordinator.
     for battery_coordinator in coordinator.battery_coordinators:
         entities.extend(
@@ -761,3 +766,47 @@ class HanchuBatteryDiagnosticSensor(HanchuBatteryCoordinatorEntity, SensorEntity
     def native_value(self):
         """Return the diagnostic value from coordinator data."""
         return getattr(self.coordinator.data, self.entity_description.key, None)
+
+
+MODEL_SENSORS: dict[str, dict] = {
+    "inverter_model": {"name": "Inverter Model", "icon": "mdi:information-outline"},
+    "rated_ac_power": {"name": "Rated AC Power", "icon": "mdi:flash", "attr": "ac_rating_w"},
+    "battery_power_max": {
+        "name": "Battery Power Maximum",
+        "icon": "mdi:battery-arrow-up-outline",
+        "attr": "battery_max_w",
+    },
+}
+
+
+class HanchuModelSensor(HanchuCoordinatorEntity, SensorEntity):
+    """Inverter model and ratings, resolved from P003 via models.py.
+
+    Inverter Model shows P003 as reported, even if it isn't in the table.
+    Rated AC Power is Predbat's inverter_limit and Battery Power Maximum is
+    its battery_rate_max; they differ on single-phase 3.0K-6.0K units, whose
+    battery stage is capped at 5000 W. Both read unknown for models not in
+    the table (or with no documented battery maximum).
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: HanchuBleCoordinator, sensor_key: str) -> None:
+        super().__init__(coordinator)
+        config = MODEL_SENSORS[sensor_key]
+        self._attr_name = config["name"]
+        self._attr_icon = config["icon"]
+        self._value_attr = config.get("attr")
+        self._attr_unique_id = f"{coordinator.address}_{sensor_key}"
+        if self._value_attr:
+            self._attr_device_class = SensorDeviceClass.POWER
+            self._attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    @property
+    def native_value(self):
+        values = self.coordinator.data.values if self.coordinator.data else None
+        if self._value_attr is None:
+            raw = (values or {}).get(MODEL_KEY)
+            return raw.strip() if isinstance(raw, str) and raw.strip() else None
+        model = model_from_values(values)
+        return getattr(model, self._value_attr) if model is not None else None

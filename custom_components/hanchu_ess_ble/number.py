@@ -9,6 +9,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .models import inverter_device_model, model_from_values
 from .const import DOMAIN
 from .pending_writes import PendingWriteBuffer
 
@@ -112,13 +113,23 @@ class HanchuBleNumber(CoordinatorEntity, NumberEntity):
             identifiers={(DOMAIN, self.coordinator.address)},
             name=self.coordinator.configured_name,
             manufacturer="Hanchu",
-            model="ESS Device (Local BLE)",
+            model=inverter_device_model(self.coordinator),
         )
 
     @property
     def native_max_value(self) -> float:
-        """Return max value — use P005 dynamically for power limits."""
+        """Return max value for power limits.
+
+        Order: the battery maximum for the inverter model reported in P003
+        (see models.py), then P005 (Inverter Power Limit), then the static
+        default. The model table comes first because single-phase 3.0K-6.0K
+        units cap battery power at 5000 W whatever their AC rating.
+        """
         dynamic_key = self._config.get("dynamic_max")
+        if dynamic_key and self.coordinator.data:
+            model = model_from_values(self.coordinator.data.values)
+            if model is not None and model.battery_max_w is not None:
+                return float(model.battery_max_w)
         if dynamic_key and self.coordinator.data and self.coordinator.data.values:
             raw = self.coordinator.data.values.get(dynamic_key)
             if raw is not None:
