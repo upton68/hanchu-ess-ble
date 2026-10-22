@@ -16,7 +16,7 @@ from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN, PLATFORMS
 from .coordinator import HanchuBleCoordinator
-from .models import model_from_values
+from .models import battery_model_from_values, model_from_values
 from .pending_writes import PendingWriteBuffer
 
 _LOGGER = logging.getLogger(__name__)
@@ -63,6 +63,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(coordinator.async_add_listener(_async_sync_device_model))
     _async_sync_device_model()
+
+    def _make_battery_model_sync(battery_coordinator):
+        @callback
+        def _async_sync_battery_model() -> None:
+            """Same as above for a battery pack, from its cell layout (B147)."""
+            values = battery_coordinator.data.values if battery_coordinator.data else None
+            name = battery_model_from_values(values)
+            if name is None:
+                return
+            device_registry = dr.async_get(hass)
+            device = device_registry.async_get_device(
+                identifiers={(DOMAIN, battery_coordinator.address)}
+            )
+            if device is not None and device.model != name:
+                device_registry.async_update_device(device.id, model=name)
+
+        return _async_sync_battery_model
+
+    for battery_coordinator in coordinator.battery_coordinators:
+        sync = _make_battery_model_sync(battery_coordinator)
+        entry.async_on_unload(battery_coordinator.async_add_listener(sync))
+        sync()
     # No update listener: the options flow (OptionsFlowWithReload) and the
     # reconfigure flow (async_update_reload_and_abort) both reload the entry
     # themselves. Registering a listener as well reloaded it twice and is

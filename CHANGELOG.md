@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Battery model detection. Each configured battery pack now reads its cell
+  configuration (B147, e.g. `16S184AH`), which is mapped to the pack model.
+  - New per-pack **Battery Model** and **Cell Configuration** diagnostic
+    sensors; the model is also shown on the battery's device card.
+  - Only `16S184AH` (Home-ESS-LV-9.4K) is mapped so far, confirmed on a heated
+    and an unheated pack. Other layouts show as `Unknown (<layout>)`.
+  - Heated and unheated packs report the same values over Bluetooth, so the
+    model doesn't say which one you have. B183 (Heating Control) reads 1 on
+    both, so it doesn't indicate heating hardware either.
+
 ### Fixed
 - The inverter model register (P003) is now read in its own small request
   after a successful poll, instead of being added to the main poll batch. If an
