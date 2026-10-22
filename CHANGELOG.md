@@ -17,13 +17,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     model doesn't say which one you have. B183 (Heating Control) reads 1 on
     both, so it doesn't indicate heating hardware either.
 
-### Fixed
+### Changed
 - The inverter model register (P003) is now read in its own small request
-  after a successful poll, instead of being added to the main poll batch. If an
-  inverter's firmware doesn't answer P003, only that request is affected (it
-  times out after 20 seconds and is retried at most three times), and normal
-  readings and startup carry on. Previously an unanswered P003 could hold up
-  the whole first poll until the 60-second BLE timeout.
+  after a successful poll, instead of being added to the main poll batch. This
+  is a precaution: P003 has only been confirmed on single-phase inverters, and
+  if another model's firmware doesn't answer it, only that request is affected
+  (it times out after 20 seconds and is tried at most three times). Normal
+  readings and startup carry on regardless.
+
+### Fixed
 - A register holding raw bytes instead of text no longer makes the whole read
   fail. Older battery packs return unprogrammed memory (0xFF bytes) for B001,
   which caused a `UnicodeDecodeError` and lost every other value in the same
