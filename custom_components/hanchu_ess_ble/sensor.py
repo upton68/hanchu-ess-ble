@@ -450,10 +450,13 @@ BATTERY_REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
         entity_category=EntityCategory.DIAGNOSTIC,
         enabled_default=False,
     ),
+    # Not the pack model (that's Battery Model, from B147). B146 reads "HC05"
+    # on both heated and unheated 9.4K packs; its meaning isn't known yet.
     "B146": _register_description(
         key="B146",
-        name="Model",
+        name="BMS Code",
         entity_category=EntityCategory.DIAGNOSTIC,
+        enabled_default=False,
     ),
     "B148": _register_description(
         key="B148",

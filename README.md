@@ -209,7 +209,8 @@ Each configured battery pack appears as its own device with the following sensor
 | Environmental Temperature | Ambient temperature at the pack (°C) |
 | PCBA Temperature | Control board temperature (°C) |
 | Battery Current | Charge/discharge current for that pack (A) |
-| Serial Number, Hardware Version, Model, Firmware Version | Diagnostic identification fields |
+| Serial Number, Hardware Version, Firmware Version | Diagnostic identification fields |
+| BMS Code | Diagnostic, disabled by default. Code reported by the pack (B146), e.g. `HC05`. Its meaning isn't known yet, and it isn't the pack model |
 | Battery Model | Diagnostic. The pack model, worked out from its cell configuration, e.g. Home-ESS-LV-9.4K. Also shown on the battery's device card |
 | Cell Configuration | Diagnostic. Cells in series and capacity as reported by the pack (B147), e.g. `16S184AH` |
 

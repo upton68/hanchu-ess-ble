@@ -24,6 +24,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   if another model's firmware doesn't answer it, only that request is affected
   (it times out after 20 seconds and is tried at most three times). Normal
   readings and startup carry on regardless.
+- The battery **Model** sensor (B146) is renamed **BMS Code** and is now
+  disabled by default for new installs. It reads "HC05" on both heated and
+  unheated 9.4K packs, so it isn't the pack model; that's the new Battery
+  Model sensor. Existing installs keep it enabled with the same entity ID.
 
 ### Fixed
 - A register holding raw bytes instead of text no longer makes the whole read

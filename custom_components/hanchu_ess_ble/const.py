@@ -309,7 +309,7 @@ BATTERY_POLL_KEYS: tuple[str, ...] = (
     "B040",  # PCBA Temperature
     "B043",  # Battery Current
     "B145",  # Hardware Version
-    "B146",  # Battery Model
+    "B146",  # BMS Code, e.g. "HC05" (meaning unknown; not the pack model)
     "B148",  # Firmware Version
     "B183",  # Heating Control Switch (1 = on, 0 = off) — heated packs only, read-only
     "B147",  # Cell configuration, e.g. "16S184AH" — identifies the pack model
@@ -333,7 +333,7 @@ BATTERY_REGISTER_INFO: dict[str, str] = {
     "B040": "PCBA Temperature",
     "B043": "Battery Current",
     "B145": "Hardware Version",
-    "B146": "Battery Model",
+    "B146": "BMS Code",
     "B148": "Firmware Version",
     "B183": "Heating Control Switch",
     "B147": "Cell Configuration",
