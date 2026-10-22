@@ -188,7 +188,12 @@ def _decode_json_payload(payload: bytes) -> dict[str, Any]:
             continue
 
         try:
-            document = json.loads(cleaned_payload[index:].decode("utf-8"))
+            # errors="replace": some registers hold raw bytes rather than text
+            # (e.g. B001 on older battery packs is unprogrammed 0xFF memory).
+            # A strict decode would fail the whole reply over one value.
+            document = json.loads(
+                cleaned_payload[index:].decode("utf-8", errors="replace")
+            )
         except json.JSONDecodeError as err:
             decode_error = err
             continue
@@ -209,13 +214,26 @@ def _decode_json_payload(payload: bytes) -> dict[str, Any]:
     raise HanchuProtocolError("Hanchu reply payload does not contain JSON")
 
 
+def _clean_value(value: Any) -> Any:
+    """Drop bytes that weren't valid text from a string value.
+
+    Unprogrammed memory comes back as 0xFF bytes, which the tolerant decode
+    turns into U+FFFD replacement characters. A value made only of those
+    (or empty once they're removed) is reported as no value at all.
+    """
+    if not isinstance(value, str) or "\ufffd" not in value:
+        return value
+    cleaned = value.replace("\ufffd", "").strip()
+    return cleaned or None
+
+
 def parse_reply_payload(payload: bytes) -> HanchuReply:
     """Parse a JSON reply payload into a structured object."""
 
     document = _decode_json_payload(payload)
     _LOGGER.debug("Parsing Hanchu reply payload=%s", document)
     points = [
-        HanchuDataPoint(key=item["k"], value=item.get("v"))
+        HanchuDataPoint(key=item["k"], value=_clean_value(item.get("v")))
         for item in document.get("data", [])
         if "k" in item
     ]

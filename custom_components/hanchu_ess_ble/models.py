@@ -87,7 +87,8 @@ _MODELS_BY_NAME: dict[str, InverterModel] = {
 }
 
 MODEL_KEY = "P003"  # Inverter Model, e.g. "HESS-HY-S-5.0K"
-MODEL_READ_ATTEMPTS = 5  # poll cycles to try P003 before giving up
+MODEL_READ_ATTEMPTS = 3  # separate P003 reads to try before giving up
+MODEL_READ_TIMEOUT_SECONDS = 20  # per attempt; P003 is optional
 
 
 def lookup_inverter_model(name: Any) -> InverterModel | None:
@@ -111,3 +112,44 @@ def inverter_device_model(coordinator: Any) -> str:
     data = getattr(coordinator, "data", None)
     model = model_from_values(getattr(data, "values", None))
     return model.name if model is not None else MODEL
+
+
+# ---------------------------------------------------------------------------
+# Battery packs
+# ---------------------------------------------------------------------------
+
+BATTERY_LAYOUT_KEY = "B147"  # Cell configuration, e.g. "16S184AH"
+
+# Cell layout (B147) -> battery model name. B147 is the one identifier that is
+# present on both old and new packs: B001's factory build string is blank on
+# older packs, and B146 reads "HC05" on both heated and unheated 9.4K packs.
+# Heated vs unheated can't be told apart over BLE (the cloud's devModel 3/3_1
+# can), so the names here never carry a heated suffix. Add layouts only when
+# confirmed from a real pack; 16S184AH (16 x 3.2 V x 184 Ah = 9.42 kWh) is
+# confirmed on two 9.4K packs (one heated, one unheated).
+BATTERY_MODELS_BY_LAYOUT: dict[str, str] = {
+    "16S184AH": "Home-ESS-LV-9.4K",
+}
+
+
+def battery_layout(values: dict | None) -> str | None:
+    """Return the normalised cell layout from battery values, if any."""
+    raw = (values or {}).get(BATTERY_LAYOUT_KEY)
+    if not isinstance(raw, str):
+        return None
+    layout = raw.strip().upper()
+    return layout or None
+
+
+def battery_model_from_values(values: dict | None) -> str | None:
+    """Return the battery model name for a pack's values, or None."""
+    layout = battery_layout(values)
+    return BATTERY_MODELS_BY_LAYOUT.get(layout) if layout else None
+
+
+def battery_device_model(coordinator: Any) -> str:
+    """Model name for a battery's DeviceInfo, or the generic default."""
+    from .const import MODEL_BATTERY  # local import: const has no dependency on us
+
+    data = getattr(coordinator, "data", None)
+    return battery_model_from_values(getattr(data, "values", None)) or MODEL_BATTERY

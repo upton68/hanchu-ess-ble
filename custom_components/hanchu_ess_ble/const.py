@@ -294,7 +294,7 @@ BATTERY_SCAN_INTERVAL = timedelta(seconds=DEFAULT_BATTERY_SCAN_INTERVAL_SECONDS)
 
 MODEL_BATTERY = "ESS Battery (BLE)"
 
-# All battery values are cheap enough (11 keys, single connection, verified
+# All battery values are cheap enough (12 keys, single connection, verified
 # against real hardware) to read in one request every cycle — no fast/slow
 # tiering needed like the inverter. Static fields (serial/HW/model/firmware)
 # are still only meaningfully read once at startup by the coordinator, since
@@ -309,9 +309,10 @@ BATTERY_POLL_KEYS: tuple[str, ...] = (
     "B040",  # PCBA Temperature
     "B043",  # Battery Current
     "B145",  # Hardware Version
-    "B146",  # Battery Model
+    "B146",  # BMS Code, e.g. "HC05" (meaning unknown; not the pack model)
     "B148",  # Firmware Version
     "B183",  # Heating Control Switch (1 = on, 0 = off) — heated packs only, read-only
+    "B147",  # Cell configuration, e.g. "16S184AH" — identifies the pack model
 )
 
 # Fields that only need to be read once at setup and then cached, rather than
@@ -332,7 +333,8 @@ BATTERY_REGISTER_INFO: dict[str, str] = {
     "B040": "PCBA Temperature",
     "B043": "Battery Current",
     "B145": "Hardware Version",
-    "B146": "Battery Model",
+    "B146": "BMS Code",
     "B148": "Firmware Version",
     "B183": "Heating Control Switch",
+    "B147": "Cell Configuration",
 }

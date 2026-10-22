@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Battery model detection. Each configured battery pack now reads its cell
+  configuration (B147, e.g. `16S184AH`), which is mapped to the pack model.
+  - New per-pack **Battery Model** and **Cell Configuration** diagnostic
+    sensors; the model is also shown on the battery's device card.
+  - Only `16S184AH` (Home-ESS-LV-9.4K) is mapped so far, confirmed on a heated
+    and an unheated pack. Other layouts show as `Unknown (<layout>)`.
+  - Heated and unheated packs report the same values over Bluetooth, so the
+    model doesn't say which one you have. B183 (Heating Control) reads 1 on
+    both, so it doesn't indicate heating hardware either.
+
+### Changed
+- The inverter model register (P003) is now read in its own small request
+  after a successful poll, instead of being added to the main poll batch. This
+  is a precaution: P003 has only been confirmed on single-phase inverters, and
+  if another model's firmware doesn't answer it, only that request is affected
+  (it times out after 20 seconds and is tried at most three times). Normal
+  readings and startup carry on regardless.
+- The battery **Model** sensor (B146) is renamed **BMS Code** and is now
+  disabled by default for new installs. It reads "HC05" on both heated and
+  unheated 9.4K packs, so it isn't the pack model; that's the new Battery
+  Model sensor. Existing installs keep it enabled with the same entity ID.
+
+### Fixed
+- A register holding raw bytes instead of text no longer makes the whole read
+  fail. Older battery packs return unprogrammed memory (0xFF bytes) for B001,
+  which caused a `UnicodeDecodeError` and lost every other value in the same
+  reply. Such bytes are now dropped, and a value made only of them reads as
+  empty.
+
 ## [1.6.0] - 2026-10-21
 
 ### Added

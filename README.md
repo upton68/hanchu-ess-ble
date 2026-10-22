@@ -140,7 +140,7 @@ Battery heating is controlled in two places, and both need to be on for heating 
 
 | Entity | Device | Register | What it does |
 |---|---|---|---|
-| Heating Control | Each battery pack | B183 | **Read-only sensor.** Shows the battery's own master switch for its heating hardware (1 = on, 0 = off). Requires the pack to be configured under **Adding individual battery packs**. |
+| Heating Control | Each battery pack | B183 | **Read-only sensor.** Shows the battery's own master switch for its heating hardware (1 = on, 0 = off). Requires the pack to be configured under **Adding individual battery packs**. Note that unheated packs also read 1, so this shows the setting, not whether the pack has a heater. |
 | Intelligent Battery Preheating | Inverter | L108 | Switch. Lets the inverter warm the batteries automatically when they're cold. |
 | Battery Preheating Manual | Inverter | L114 | Switch. Turns preheating on manually. Hanchu's own menu notes this **only works below 5°C with no battery fault**. |
 
@@ -209,7 +209,12 @@ Each configured battery pack appears as its own device with the following sensor
 | Environmental Temperature | Ambient temperature at the pack (°C) |
 | PCBA Temperature | Control board temperature (°C) |
 | Battery Current | Charge/discharge current for that pack (A) |
-| Serial Number, Hardware Version, Model, Firmware Version | Diagnostic identification fields |
+| Serial Number, Hardware Version, Firmware Version | Diagnostic identification fields |
+| BMS Code | Diagnostic, disabled by default. Code reported by the pack (B146), e.g. `HC05`. Its meaning isn't known yet, and it isn't the pack model |
+| Battery Model | Diagnostic. The pack model, worked out from its cell configuration, e.g. Home-ESS-LV-9.4K. Also shown on the battery's device card |
+| Cell Configuration | Diagnostic. Cells in series and capacity as reported by the pack (B147), e.g. `16S184AH` |
+
+**Battery Model** is worked out from the Cell Configuration. So far only `16S184AH` (Home-ESS-LV-9.4K) has been confirmed. Any other layout shows as `Unknown (<layout>)`; please open an issue with that value and your pack's model so it can be added. Over Bluetooth there's no way to tell a heated pack from an unheated one (both report the same values, and the Heating Control register reads 1 on both), so the model never shows a heated suffix. The [hanchu-ess-ha](https://github.com/upton68/hanchu-ess-ha) cloud integration can tell them apart.
 
 These are independent per-pack readings, distinct from the inverter's aggregate Battery SoC/Power/Temperature sensors — useful for spotting imbalance between packs on multi-battery systems.
 

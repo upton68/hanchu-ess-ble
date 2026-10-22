@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -17,7 +18,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .ble_client import HanchuBleClient, HanchuBleSnapshot, snapshot_from_service_info
-from .models import MODEL_KEY, MODEL_READ_ATTEMPTS
+from .models import MODEL_KEY, MODEL_READ_ATTEMPTS, MODEL_READ_TIMEOUT_SECONDS
 from .const import (
     BATTERY_POLL_KEYS,
     BATTERY_SCAN_INTERVAL,
@@ -163,14 +164,6 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         # Build the key list for this cycle: all fast keys plus one slow key.
         slow_key = SLOW_POLL_KEYS[self._slow_poll_index]
         poll_keys = list(FAST_POLL_KEYS) + [slow_key]
-        # The inverter model (P003) never changes, but power limits and the
-        # device name depend on it, so read it every cycle until it's known
-        # rather than waiting minutes for the slow-poll rotation.
-        if self._model_read_attempts_left > 0 and not (
-            self.data and self.data.values and self.data.values.get(MODEL_KEY)
-        ):
-            self._model_read_attempts_left -= 1
-            poll_keys.append(MODEL_KEY)
         _LOGGER.debug(
             "Cycle slow_poll_index=%d polling slow key=%s",
             self._slow_poll_index,
@@ -229,14 +222,57 @@ class HanchuBleCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
             cycle_duration,
             reply.as_dict(),
         )
+        values = reply.as_dict()
+        model_values = await self._async_read_model_if_needed()
+        if model_values:
+            values.update(model_values)
         return self._build_data(
             snapshot,
             is_present=True,
-            values=reply.as_dict(),
+            values=values,
             last_successful_read=datetime.now(timezone.utc),
             consecutive_failures=0,
             last_cycle_duration=cycle_duration,
         )
+
+    async def _async_read_model_if_needed(self) -> dict[str, Any] | None:
+        """Read the inverter model (P003) on its own, until it's known.
+
+        Kept out of the main poll batch on purpose: if an inverter's firmware
+        doesn't answer P003, only this small request is affected, never the
+        regular readings. It runs only after a successful main poll, gives up
+        after MODEL_READ_ATTEMPTS tries, and a failure here never counts as
+        a BLE failure.
+        """
+        if self._model_read_attempts_left <= 0:
+            return None
+        if self.data and self.data.values and self.data.values.get(MODEL_KEY):
+            return None
+        self._model_read_attempts_left -= 1
+        try:
+            reply = await asyncio.wait_for(
+                self.client.async_read_values([MODEL_KEY], encrypted=True),
+                timeout=MODEL_READ_TIMEOUT_SECONDS,
+            )
+        except Exception as err:  # noqa: BLE001 — optional read, never fatal
+            _LOGGER.debug(
+                "Inverter model (%s) read failed for address=%s (%d attempts left): %r",
+                MODEL_KEY,
+                self.address,
+                self._model_read_attempts_left,
+                err,
+            )
+            return None
+        value = reply.as_dict().get(MODEL_KEY)
+        if not value:
+            _LOGGER.debug(
+                "Inverter at address=%s returned no model for %s (%d attempts left)",
+                self.address,
+                MODEL_KEY,
+                self._model_read_attempts_left,
+            )
+            return None
+        return {MODEL_KEY: value}
 
     @callback
     def _async_handle_bluetooth_event(

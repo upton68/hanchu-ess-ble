@@ -25,7 +25,12 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .models import MODEL_KEY, model_from_values
+from .models import (
+    MODEL_KEY,
+    battery_layout,
+    battery_model_from_values,
+    model_from_values,
+)
 from .const import BATTERY_POLL_KEYS, FAST_POLL_KEYS, SLOW_POLL_KEYS, DOMAIN
 from .coordinator import HanchuBatteryCoordinator, HanchuBleCoordinator
 from .entity import HanchuBatteryCoordinatorEntity, HanchuCoordinatorEntity
@@ -445,14 +450,22 @@ BATTERY_REGISTER_SENSORS: dict[str, SensorEntityDescription] = {
         entity_category=EntityCategory.DIAGNOSTIC,
         enabled_default=False,
     ),
+    # Not the pack model (that's Battery Model, from B147). B146 reads "HC05"
+    # on both heated and unheated 9.4K packs; its meaning isn't known yet.
     "B146": _register_description(
         key="B146",
-        name="Model",
+        name="BMS Code",
         entity_category=EntityCategory.DIAGNOSTIC,
+        enabled_default=False,
     ),
     "B148": _register_description(
         key="B148",
         name="Firmware Version",
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    "B147": _register_description(
+        key="B147",
+        name="Cell Configuration",
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
 }
@@ -516,6 +529,7 @@ async def async_setup_entry(
             HanchuBatteryDiagnosticSensor(battery_coordinator, description)
             for description in DIAGNOSTIC_BLE_SENSORS
         )
+        entities.append(HanchuBatteryModelSensor(battery_coordinator))
 
     async_add_entities(entities)
 
@@ -810,3 +824,29 @@ class HanchuModelSensor(HanchuCoordinatorEntity, SensorEntity):
             return raw.strip() if isinstance(raw, str) and raw.strip() else None
         model = model_from_values(values)
         return getattr(model, self._value_attr) if model is not None else None
+
+
+class HanchuBatteryModelSensor(HanchuBatteryCoordinatorEntity, SensorEntity):
+    """Battery pack model, resolved from its cell configuration (B147).
+
+    Shows the model name when the layout is known, or "Unknown (<layout>)"
+    so new layouts can be reported and added. Can't distinguish heated from
+    unheated packs; see models.py.
+    """
+
+    _attr_name = "Battery Model"
+    _attr_icon = "mdi:information-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: HanchuBatteryCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.address}_battery_model"
+
+    @property
+    def native_value(self):
+        values = self.coordinator.data.values if self.coordinator.data else None
+        model = battery_model_from_values(values)
+        if model is not None:
+            return model
+        layout = battery_layout(values)
+        return f"Unknown ({layout})" if layout else None
