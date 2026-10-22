@@ -13,6 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   times out after 20 seconds and is retried at most three times), and normal
   readings and startup carry on. Previously an unanswered P003 could hold up
   the whole first poll until the 60-second BLE timeout.
+- A register holding raw bytes instead of text no longer makes the whole read
+  fail. Older battery packs return unprogrammed memory (0xFF bytes) for B001,
+  which caused a `UnicodeDecodeError` and lost every other value in the same
+  reply. Such bytes are now dropped, and a value made only of them reads as
+  empty.
 
 ## [1.6.0] - 2026-10-21
 
