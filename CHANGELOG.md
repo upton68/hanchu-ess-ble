@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- The inverter model register (P003) is now read in its own small request
+  after a successful poll, instead of being added to the main poll batch. If an
+  inverter's firmware doesn't answer P003, only that request is affected (it
+  times out after 20 seconds and is retried at most three times), and normal
+  readings and startup carry on. Previously an unanswered P003 could hold up
+  the whole first poll until the 60-second BLE timeout.
+
 ## [1.6.0] - 2026-10-21
 
 ### Added

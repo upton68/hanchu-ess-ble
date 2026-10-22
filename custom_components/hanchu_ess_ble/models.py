@@ -87,7 +87,8 @@ _MODELS_BY_NAME: dict[str, InverterModel] = {
 }
 
 MODEL_KEY = "P003"  # Inverter Model, e.g. "HESS-HY-S-5.0K"
-MODEL_READ_ATTEMPTS = 5  # poll cycles to try P003 before giving up
+MODEL_READ_ATTEMPTS = 3  # separate P003 reads to try before giving up
+MODEL_READ_TIMEOUT_SECONDS = 20  # per attempt; P003 is optional
 
 
 def lookup_inverter_model(name: Any) -> InverterModel | None:
