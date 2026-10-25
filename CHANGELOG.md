@@ -13,8 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   reads both back to confirm. L096 is written in minutes (60 during BST, 0
   during GMT). Refuses if the inverter's time zone (L020) doesn't match Home
   Assistant's, or while a Confirm Write is in progress. The button is
-  disabled by default and the service defaults to a dry run. Not yet tested
-  on real systems; for use if the Hanchu cloud can't update the clock.
+  disabled by default and the service defaults to a dry run. Not yet
+  widely tested: a forced write has been confirmed on one system in GMT
+  (L096 = 0); writing 60 during BST is untested. For use if the Hanchu
+  cloud can't update the clock.
 
 ## [1.7.0] - 2026-10-22
 
