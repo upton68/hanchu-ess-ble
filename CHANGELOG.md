@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-25
+
 ### Added
 - **Experimental:** Sync Clock button and `hanchu_ess_ble.sync_clock`
   service (#24). Checks the inverter's clock (L094) and daylight-saving
@@ -288,7 +290,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.4.2...v1.5.0
