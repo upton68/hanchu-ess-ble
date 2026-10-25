@@ -11,6 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .clock_sync import ClockSyncError, async_sync_clock
 from .const import (
     BATTERY_RECOVERY_KEY,
     BATTERY_RECOVERY_OFF,
@@ -59,6 +60,7 @@ async def async_setup_entry(
                 icon="mdi:battery-remove-outline",
                 value=BATTERY_RECOVERY_OFF,
             ),
+            HanchuSyncClockButton(coordinator, pending_writes, device_info),
         ]
     )
 
@@ -184,3 +186,40 @@ class HanchuBatteryRecoveryButton(ButtonEntity):
             )
         _LOGGER.warning("Battery Recovery command sent: %s=%s", key, self._value)
         await self._coordinator.async_request_refresh()
+
+
+class HanchuSyncClockButton(ButtonEntity):
+    """EXPERIMENTAL: sync the inverter RTC (L094) and DST offset (L096).
+
+    Reads the clock first and only writes what's wrong, then reads both
+    registers back to confirm. See clock_sync.py for the safeguards.
+    Disabled by default until it has been tested on real systems (#24).
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+    _attr_has_entity_name = True
+    _attr_name = "Sync Clock"
+    _attr_icon = "mdi:clock-check-outline"
+
+    def __init__(
+        self,
+        coordinator: HanchuBleCoordinator,
+        pending_writes: PendingWriteBuffer,
+        device_info: DeviceInfo,
+    ) -> None:
+        """Initialise the sync clock button."""
+        self._coordinator = coordinator
+        self._pending_writes = pending_writes
+        self._attr_device_info = device_info
+        self._attr_unique_id = f"{coordinator.address}_sync_clock"
+
+    async def async_press(self) -> None:
+        """Run a clock sync, surfacing any refusal or failure in the UI."""
+        try:
+            result = await async_sync_clock(self._coordinator, self._pending_writes)
+        except ClockSyncError as err:
+            raise HomeAssistantError(f"Clock sync: {err}") from err
+        except Exception as err:  # noqa: BLE001 — surface BLE failures to the UI
+            raise HomeAssistantError(f"Clock sync failed: {err}") from err
+        _LOGGER.info("Clock sync: %s", result.get("message"))

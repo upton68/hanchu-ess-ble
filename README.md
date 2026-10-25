@@ -234,11 +234,43 @@ onboard clock has drifted, which could affect any scheduling that relies on
 the inverter's own internal clock rather than commands sent live from Home
 Assistant.
 
+### Experimental: Sync Clock
+
+Normally the Hanchu cloud keeps the inverter's clock and daylight-saving
+offset correct. If it can't (for example the logger is offline or cloud
+access is lost), the **Sync Clock** button can correct them locally.
+
+> ⚠️ This writes to the inverter's clock, which every User-Defined schedule
+> depends on. It hasn't been widely tested yet. The button is disabled by
+> default; run the service with `dry_run: true` first.
+
+It reads the current values, then writes only what's wrong:
+
+- **L096** in minutes, from Home Assistant's time zone (60 in BST, 0 in GMT)
+- **L094** as UTC epoch seconds, if it's more than 60 seconds out
+
+It reads both back afterwards and reports an error if they don't match. It
+won't run if the inverter's time zone (L020) differs from Home Assistant's,
+or while a Confirm Write is in progress.
+
 ---
 
 ## Services
 
 In addition to the automatable entities above, this integration exposes services for advanced use.
+
+### `hanchu_ess_ble.sync_clock` (experimental)
+
+Same check as the Sync Clock button, but returns the values before and after
+so you can see exactly what happened. Defaults to a dry run.
+
+```yaml
+action: hanchu_ess_ble.sync_clock
+data:
+  dry_run: true   # set to false to actually write
+  force: false    # true writes both registers even if they look correct
+response_variable: result
+```
 
 ### `hanchu_ess_ble.confirm_write`
 

@@ -19,3 +19,21 @@ read_registers:
       example: "84:1F:E8:44:00:9E"
       selector:
         text:
+sync_clock:
+  name: Sync clock (experimental)
+  description: Checks the inverter clock (L094) and daylight-saving offset (L096, in minutes) against Home Assistant and writes only what is wrong, then reads both back to confirm. Untested on most systems; try dry_run first.
+  fields:
+    dry_run:
+      name: Dry run
+      description: Read and report what would be written, without writing anything.
+      required: false
+      default: true
+      selector:
+        boolean:
+    force:
+      name: Force
+      description: Write both registers even if they already look correct.
+      required: false
+      default: false
+      selector:
+        boolean:
