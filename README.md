@@ -8,7 +8,7 @@ A local Bluetooth (BLE) integration for Hanchu iESS battery storage systems, pro
 
 ## Background
 
-This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com/Blustery7752/hanchu-ess-ble), which provided the original BLE read-only foundation. Write control was developed by reverse-engineering the local BLE protocol with significant reference to [1ulk's Hanchu BLE Controller](https://1ulk.github.io/hanchu-) — a browser-based Web Bluetooth control panel whose `hanchu-params.js` parameter registry and `hanchu-controller.js` write implementation were invaluable in confirming the protocol structure and P/L-code mappings.
+This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com/Blustery7752/hanchu-ess-ble), which provided the original BLE read-only foundation. Write control was developed by reverse-engineering the local BLE protocol with significant reference to [1ulk's Hanchu BLE Controller](https://1ulk.github.io/hanchu-controller) — a browser-based Web Bluetooth control panel whose `hanchu-params.js` parameter registry and `hanchu-controller.js` write implementation were invaluable in confirming the protocol structure and P/L-code mappings.
 
 ---
 
