@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Experimental:** Sync Clock button and `hanchu_ess_ble.sync_clock`
+  service (#24). Checks the inverter's clock (L094) and daylight-saving
+  offset (L096) against Home Assistant and writes only what is wrong, then
+  reads both back to confirm. L096 is written in minutes (60 during BST, 0
+  during GMT). Refuses if the inverter's time zone (L020) doesn't match Home
+  Assistant's, or while a Confirm Write is in progress. The button is
+  disabled by default and the service defaults to a dry run. Not yet tested
+  on real systems; for use if the Hanchu cloud can't update the clock.
+
 ## [1.7.0] - 2026-10-22
 
 ### Added

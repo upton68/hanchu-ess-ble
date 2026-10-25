@@ -87,8 +87,8 @@ These were discovered during live testing and are critical for correct operation
 | L023 | DTU Firmware Version | | | e.g. 1.9.0 |
 | L034 | Meter Type / CT Meter Version | 0 = no meter, 3 = specific supported meter | | |
 | L020 | Timezone | IANA timezone code reported by the DTU | | Confirmed readable — e.g. "Europe/London". Earlier notes assumed write-only; live testing (v1.0.10) confirmed it also returns correctly on read |
-| L094 | RTC Unix Epoch Timestamp | Current Unix epoch time as reported by the DTU's onboard RTC | s (epoch) | Confirmed matches real-world time within normal poll-cycle drift. Exposed as `SensorDeviceClass.TIMESTAMP` via `datetime.fromtimestamp(value, tz=timezone.utc)` — raw integer alone displays as a meaningless incrementing number if not converted |
-| L096 | RTC Daylight Saving Offset | DST offset as reported by the DTU | min | **Correction to original hypothesis** — earlier notes assumed hours; live testing (v1.0.10) confirmed the value is in **minutes** (60 during BST, expected 0 during GMT), consistent with a standard one-hour DST shift |
+| L094 | RTC Unix Epoch Timestamp | Current Unix epoch time as reported by the DTU's onboard RTC | s (epoch) | Confirmed matches real-world time within normal poll-cycle drift. Exposed as `SensorDeviceClass.TIMESTAMP` via `datetime.fromtimestamp(value, tz=timezone.utc)` — raw integer alone displays as a meaningless incrementing number if not converted. Writable (tested by 1ulk via a web controller, #24); experimental Sync Clock writes it only when more than 60 s out |
+| L096 | RTC Daylight Saving Offset | DST offset as reported by the DTU | min | **Correction to original hypothesis** — earlier notes assumed hours; live testing (v1.0.10) confirmed the value is in **minutes** (60 during BST, expected 0 during GMT), consistent with a standard one-hour DST shift. Changed 60 → 0 overnight at the October 2026 clock change on a cloud-connected system (presumably pushed by the cloud). Write support added experimentally via Sync Clock (#24): written in minutes; a third-party web controller writing hours worked only because GMT is 0 |
 
 ---
 

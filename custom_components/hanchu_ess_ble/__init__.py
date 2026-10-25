@@ -14,6 +14,7 @@ from homeassistant.core import (
 )
 from homeassistant.helpers import device_registry as dr
 
+from .clock_sync import async_sync_clock
 from .const import DOMAIN, PLATFORMS
 from .coordinator import HanchuBleCoordinator
 from .models import battery_model_from_values, model_from_values
@@ -201,6 +202,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "read_registers",
             handle_read_registers,
             supports_response=SupportsResponse.ONLY,
+        )
+
+    async def handle_sync_clock(call: ServiceCall) -> ServiceResponse:
+        """EXPERIMENTAL: check and, if needed, correct the inverter clock.
+
+        Same logic as the Sync Clock button, but returns the before/after
+        values so a tester can see exactly what happened. dry_run reads and
+        reports without writing anything.
+        """
+        coordinator: HanchuBleCoordinator | None = None
+        entry_id: str | None = None
+        for key, value in hass.data.get(DOMAIN, {}).items():
+            if isinstance(value, HanchuBleCoordinator):
+                coordinator, entry_id = value, key
+                break
+        if coordinator is None:
+            return {"success": False, "message": "No Hanchu ESS BLE device configured"}
+
+        try:
+            result = await async_sync_clock(
+                coordinator,
+                hass.data[DOMAIN].get(f"{entry_id}_pending_writes"),
+                force=bool(call.data.get("force", False)),
+                dry_run=bool(call.data.get("dry_run", True)),
+            )
+        except Exception as err:  # noqa: BLE001 — report any failure back
+            return {"success": False, "message": str(err) or repr(err)}
+        return {"success": True, **result}
+
+    if not hass.services.has_service(DOMAIN, "sync_clock"):
+        hass.services.async_register(
+            DOMAIN,
+            "sync_clock",
+            handle_sync_clock,
+            supports_response=SupportsResponse.OPTIONAL,
         )
 
     return True
