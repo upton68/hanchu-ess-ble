@@ -10,7 +10,7 @@ Control uses Predbat's generic Service API. BLE has no single-call equivalent to
 
 ## Prerequisites
 
-Install this integration via HACS and configure it — this requires a Bluetooth proxy within range of the inverter (see the [README](../README.md) for hardware recommendations; an ESPHome-based proxy such as the M5Stack Atom Lite has been confirmed reliable). Confirm that inverter sensors are appearing in Home Assistant, and that you can control the inverter's number/select/time entities manually via the Confirm Write button, before proceeding.
+Install this integration (**v1.4.1 or later**) via HACS and configure it — this requires a Bluetooth proxy within range of the inverter (see the [README](../README.md) for hardware recommendations; an ESPHome-based proxy such as the M5Stack Atom Lite has been confirmed reliable). Confirm that inverter sensors are appearing in Home Assistant, and that you can control the inverter's number/select/time entities manually via the Confirm Write button, before proceeding.
 
 ## Step 1 — Create helpers
 
@@ -30,6 +30,15 @@ Create the following helpers in Home Assistant (Settings → Devices & Services 
 | `input_text.hanchu_ble_last_mode_action` | Hanchu BLE Last Mode Action |
 
 `input_text.hanchu_ble_last_mode_action` tracks the last mode successfully applied so the bridge script can skip a redundant write when Predbat reasserts a state that is already active.
+
+**Number helpers** (number type, min 0, max your inverter's rated power in W, step 1, unit W, initial value your inverter's rated power):
+
+| Entity ID | Name |
+| --------- | ---- |
+| `input_number.predbat_ble_charge_rate` | Predbat BLE Charge Rate |
+| `input_number.predbat_ble_discharge_rate` | Predbat BLE Discharge Rate |
+
+These are placeholders for Predbat's `charge_rate`/`discharge_rate` — see the note on charge and discharge rates under [Hanchu BLE Notes](#notes).
 
 ## Step 2 — Create the bridge script
 
@@ -142,7 +151,7 @@ sequence:
             entity_id: input_boolean.predbat_ble_discharge_start
 ```
 
-The script always stages all four charge/discharge slot-1 time entities on every call, zeroing whichever pair is not the active mode. This keeps charge and discharge mutually exclusive on the device without relying on separate stop/start calls landing in the right order, and mirrors the logic used by the cloud integration's Predbat bridge.
+The script always stages all four charge/discharge slot-1 time entities on every call, zeroing whichever pair is not the active mode. This keeps charge and discharge mutually exclusive on the device without relying on separate stop/start calls landing in the right order, and mirrors the equivalent logic in the cloud integration's bridge script.
 
 **Note on register naming**: unlike the cloud integration, the BLE integration writes directly to raw Hanchu register codes (`L005`/`L006` for Charge Slot 1 Start/End, `L011`/`L012` for Discharge Slot 1 Start/End) rather than the cloud API's `TCT_START_1`/`TDT_START_1`-style field names. The variable names in the script above (`l005_charge_start` etc.) reflect this — if you're comparing against the cloud script, map by register/entity, not by field name.
 
@@ -322,4 +331,6 @@ Repeat steps 1-3 for Load Power and PV Power (referencing `sensor.YOURDEVICE_loa
 - **Skipping redundant calls:** as with the cloud integration, `input_text.hanchu_ble_last_mode_action` skips the write entirely when the requested mode is already the last one successfully applied, tracked only after a confirmed successful write.
 - **No charge/discharge enable toggle:** as with the cloud integration, Hanchu has no explicit enable/disable for charge or discharge — the slot zeroing mechanism (setting both start and end to `00:00:00`) is the disable method.
 - **Mid-window time updates:** handled by the automation in Step 3, the same purpose as the equivalent cloud automation.
+- **Charge and discharge rates:** `charge_rate`/`discharge_rate` point at the placeholder helpers from Step 1, not at the integration's charge/discharge power limit entities, so the inverter's power limits stay at whatever you set them to. Predbat writes these rates directly rather than through the bridge script (for example, setting the discharge rate to 0 for "Hold for car"). On BLE such a write is only staged, and the next `confirm_write` from the bridge script flushes everything staged — so mapping them to the real entities makes the result depend on timing, and can leave the inverter's discharge limit stuck at 0. The trade-off is that features which rely on rate control (car charging hold, low-power charge/export) have no effect on the inverter.
+- **Integration version:** v1.4.1 or later is required. Earlier versions could report a `confirm_write` as successful without writing it when two flushes overlapped (for example at a charge/discharge handover), leaving a slot unapplied.
 - **Not device-level atomic:** each staged register is still written as its own request within the single BLE connection `confirm_write` opens, one after another — see the [README](../README.md#known-limitations) for the full detail on this and other known limitations.
