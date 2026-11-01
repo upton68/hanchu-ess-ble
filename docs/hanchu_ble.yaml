@@ -5,10 +5,10 @@
 # Copy this over your apps.yaml and:
 #   1. Install the "Hanchu ESS BLE" integration via HACS — see its README
 #      for Bluetooth proxy hardware requirements.
-#   2. Create the two helpers (see inverter-setup docs).
-#   3. Create the bridge script (see inverter-setup docs).
+#   2. Create the two helpers (see predbat-bridge.md).
+#   3. Create the bridge script (see predbat-bridge.md).
 #   4. Create the derived daily-energy helpers for load/PV/import/export —
-#      not natively available over BLE (see inverter-setup docs).
+#      not natively available over BLE (see predbat-bridge.md).
 #   5. Replace YOURDEVICE throughout with your device's entity slug as it
 #      appears in your HA entity IDs (e.g. hc_l110ym56g0915).
 #   6. Adjust inverter_limit, inverter_limit_charge, inverter_limit_discharge,
@@ -45,7 +45,7 @@ pred_bat:
   # integration) — all four are derived using HA's built-in Riemann sum
   # (Integral) + Utility Meter helpers on the corresponding live power
   # sensor. See "Step 4 — Create the daily energy helpers" in the
-  # inverter-setup docs for the full worked example (Grid Import/Export);
+  # predbat-bridge.md for the full worked example (Grid Import/Export);
   # replicate the same pattern for Load and PV.
   load_today:
     - sensor.YOURDEVICE_load_power_today
@@ -84,7 +84,7 @@ pred_bat:
     support_discharge_freeze: false
   # ─── Hanchu iESS BLE control surface (write) ──────────────────────────────
   # All four hooks call the same queued script, passing mode_action so it
-  # knows which state to apply. See inverter-setup docs for the full script.
+  # knows which state to apply. See predbat-bridge.md for the full script.
   charge_start_service:
     - service: script.hanchu_ble_set_state_queued
       data:
@@ -102,10 +102,15 @@ pred_bat:
       data:
         mode_action: discharge_stop
   # ─── Hanchu iESS BLE sensor entities (read) ───────────────────────────────
+  # charge_rate/discharge_rate deliberately point at placeholder helpers, NOT the
+  # integration's charge/discharge power limit entities. Predbat writes these
+  # directly (outside the bridge script), and on BLE a direct write is only
+  # staged - it then gets flushed to the inverter by whichever confirm_write
+  # runs next, so its effect would depend on timing. See "Hanchu BLE Notes".
   charge_rate:
-    - number.YOURDEVICE_charge_power_limit
+    - input_number.predbat_ble_charge_rate
   discharge_rate:
-    - number.YOURDEVICE_discharge_power_limit
+    - input_number.predbat_ble_discharge_rate
   battery_power:
     - sensor.YOURDEVICE_battery_power
   battery_power_invert:
