@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-11-02
+
+### Fixed
+- Removed use of the deprecated `DeviceRegistry.async_get_device` when
+  setting the inverter and battery model on their device cards. Home
+  Assistant logged a warning for this and it stops working in 2027.8.0.
+  Devices are now looked up among this integration entry's own devices,
+  which works on all supported Home Assistant versions.
+
 ## [1.8.0] - 2026-10-25
 
 ### Added

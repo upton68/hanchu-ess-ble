@@ -23,6 +23,25 @@ from .pending_writes import PendingWriteBuffer
 _LOGGER = logging.getLogger(__name__)
 
 
+@callback
+def _async_find_entry_device(
+    device_registry: dr.DeviceRegistry, entry_id: str, address: str
+) -> dr.DeviceEntry | None:
+    """Return this config entry's device with identifier (DOMAIN, address).
+
+    DeviceRegistry.async_get_device is deprecated (removed in HA 2027.8)
+    because identifiers are no longer unique across config entries. Looking
+    the device up among this entry's own devices avoids that ambiguity and
+    works on every Home Assistant version the integration supports, unlike
+    the newer async_get_device_by_identifier.
+    """
+    identifier = (DOMAIN, address)
+    for device in dr.async_entries_for_config_entry(device_registry, entry_id):
+        if identifier in device.identifiers:
+            return device
+    return None
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Hanchu ESS BLE from a config entry."""
     coordinator = HanchuBleCoordinator(hass, entry)
@@ -55,8 +74,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if model is None:
             return
         device_registry = dr.async_get(hass)
-        device = device_registry.async_get_device(
-            identifiers={(DOMAIN, coordinator.address)}
+        device = _async_find_entry_device(
+            device_registry, entry.entry_id, coordinator.address
         )
         if device is not None and device.model != model.name:
             device_registry.async_update_device(device.id, model=model.name)
@@ -74,8 +93,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             if name is None:
                 return
             device_registry = dr.async_get(hass)
-            device = device_registry.async_get_device(
-                identifiers={(DOMAIN, battery_coordinator.address)}
+            device = _async_find_entry_device(
+                device_registry, entry.entry_id, battery_coordinator.address
             )
             if device is not None and device.model != name:
                 device_registry.async_update_device(device.id, model=name)
