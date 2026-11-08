@@ -1,10 +1,11 @@
-# Predbat config for the Hanchu iESS, via the hanchu-ess-ble HACS
+# Predbat config for the Hanchu iESS, via the hanchu-ess-ble custom
 # integration (https://github.com/upton68/hanchu-ess-ble) — local Bluetooth
 # control, no dependency on the Hanchu cloud.
 #
 # Copy this over your apps.yaml and:
-#   1. Install the "Hanchu ESS BLE" integration via HACS — see its README
-#      for Bluetooth proxy hardware requirements.
+#   1. Install the "Hanchu ESS BLE" integration via the Marketplace (HA 2026.11+)
+#      or HACS (HA 2026.10 or older) — see its README for install steps and
+#      Bluetooth proxy hardware requirements.
 #   2. Create the two helpers (see predbat-bridge.md).
 #   3. Create the bridge script (see predbat-bridge.md).
 #   4. Create the derived daily-energy helpers for load/PV/import/export —
