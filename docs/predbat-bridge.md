@@ -10,7 +10,7 @@ Control uses Predbat's generic Service API. BLE has no single-call equivalent to
 
 ## Prerequisites
 
-Install this integration (**v1.4.1 or later**) via HACS and configure it — this requires a Bluetooth proxy within range of the inverter (see the [README](../README.md) for hardware recommendations; an ESPHome-based proxy such as the M5Stack Atom Lite has been confirmed reliable). Confirm that inverter sensors are appearing in Home Assistant, and that you can control the inverter's number/select/time entities manually via the Confirm Write button, before proceeding.
+Install this integration (**v1.4.1 or later**) via the Marketplace (Home Assistant 2026.11 or newer) or HACS (2026.10 or older) and configure it — see the [README](../README.md#installation) for the steps — this requires a Bluetooth proxy within range of the inverter (see the [README](../README.md) for hardware recommendations; an ESPHome-based proxy such as the M5Stack Atom Lite has been confirmed reliable). Confirm that inverter sensors are appearing in Home Assistant, and that you can control the inverter's number/select/time entities manually via the Confirm Write button, before proceeding.
 
 ## Step 1 — Create helpers
 

@@ -30,13 +30,27 @@ This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com
 
 - A Hanchu iESS battery storage system with a compatible inverter
 - Home Assistant with Bluetooth support, or a Bluetooth proxy
+- Home Assistant 2026.11 or newer uses the built-in **Marketplace** (Settings → Marketplace) to install community integrations; 2026.10 or older needs HACS installed
 - A Bluetooth proxy is **strongly recommended** for reliable connectivity — onboard Bluetooth on HA hardware has been reported as unreliable with this integration across multiple setups. Tested with the **M5Stack Atom Lite** running ESPHome's Bluetooth proxy firmware, placed within range of the inverter (available from The Pi Hut for around £10). If you plan to use individual battery pack monitoring, the same proxy needs to be within range of the battery packs too — other Bluetooth sources have not been verified reliable for this integration, including for the inverter itself.
 
 ---
 
 ## Installation
 
-### Via HACS (recommended)
+### Home Assistant 2026.11 or newer — via the Marketplace (recommended)
+
+From 2026.11, HACS is built into Home Assistant as the **Marketplace**. You must be logged in as an administrator.
+
+1. Go to **Settings → Marketplace**
+2. In the upper-right corner, select **Add from link**
+3. Under **GitHub link**, enter `upton68/hanchu-ess-ble` (or the full URL `https://github.com/upton68/hanchu-ess-ble`) and select **Add**
+4. If asked for a **Type**, choose **Integration** and select **Add** again
+5. Select **Hanchu ESS BLE** in the list, then select **Install**, check the version and select **Install** again
+6. If the Marketplace asks you to restart, restart Home Assistant via **Settings → System → Repairs**, then continue with [Configuration](#configuration)
+
+> **Upgrading an existing HACS install to 2026.11?** You don't need to do anything. On first start after the upgrade, Home Assistant moves everything from HACS (including this custom repository) into the Marketplace, and Hanchu ESS BLE keeps getting updates there. After installing an update, restart Home Assistant to apply it.
+
+### Home Assistant 2026.10 or older — via HACS
 
 1. In HACS, go to **Integrations → Custom repositories**
 2. Add `https://github.com/upton68/hanchu-ess-ble` as an **Integration**
