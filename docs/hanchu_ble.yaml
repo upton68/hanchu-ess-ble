@@ -54,6 +54,9 @@ pred_bat:
     - sensor.YOURDEVICE_pv_power_today
   export_today:
     - sensor.hanchu_ble_grid_export_today
+  # Keep import_today on the Hanchu meter even if your EV charger is wired outside it:
+  # turn switch.predbat_car_energy_reported_load off and Predbat adds the car's
+  # charging (from car_charging_energy) to the cost itself - see docs/predbat-bridge.md
   import_today:
     - sensor.hanchu_ble_grid_import_today
   # ─── Hanchu iESS BLE inverter definition ──────────────────────────────────
