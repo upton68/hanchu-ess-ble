@@ -12,6 +12,7 @@ battery_1, battery_2, ... rather than by address.
 from __future__ import annotations
 
 from datetime import datetime
+import time
 from typing import Any
 
 from homeassistant.components.diagnostics import REDACTED, async_redact_data
@@ -40,8 +41,25 @@ SERIAL_REGISTERS = {
 }
 
 
-def _iso(value: datetime | None) -> str | None:
-    return value.isoformat() if value is not None else None
+def _iso(value: Any) -> str | None:
+    """Format a timestamp, tolerating anything that isn't a datetime."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def _seconds_ago(monotonic_value: Any) -> float | None:
+    """Age of a Bluetooth advertisement timestamp.
+
+    Home Assistant's Bluetooth stack records advertisement times
+    (BluetoothServiceInfoBleak.time) as monotonic clock readings, not
+    datetimes, so report how long ago that was instead.
+    """
+    if not isinstance(monotonic_value, (int, float)):
+        return None
+    return round(time.monotonic() - monotonic_value, 1)
 
 
 def _coordinator_state(data: HanchuCoordinatorData | None) -> dict[str, Any] | None:
@@ -56,7 +74,7 @@ def _coordinator_state(data: HanchuCoordinatorData | None) -> dict[str, Any] | N
         "is_present": data.is_present,
         "connectable": data.connectable,
         "rssi": data.rssi,
-        "last_seen": _iso(data.last_seen),
+        "last_advertisement_seconds_ago": _seconds_ago(data.last_seen),
         "last_successful_read": _iso(data.last_successful_read),
         "consecutive_failures": data.consecutive_failures,
         "last_cycle_duration": data.last_cycle_duration,

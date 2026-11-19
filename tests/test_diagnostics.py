@@ -77,12 +77,14 @@ async def test_diagnostics_loaded_is_redacted(hass: HomeAssistant, bluetooth_moc
     }
 
     diag = await async_get_config_entry_diagnostics(hass, entry)
-    text = json.dumps(diag, default=str)
+    # Strict: everything must already be JSON-serialisable.
+    text = json.dumps(diag)
 
     # Useful content is present...
     assert diag["inverter"]["values"]["P071"] == 64
     assert diag["inverter"]["consecutive_failures"] == 0
     assert diag["inverter"]["rssi"] == -60
+    assert 0 <= diag["inverter"]["last_advertisement_seconds_ago"] < 60
     assert diag["batteries"]["battery_1"]["values"]["B034"] == 22.45
     assert diag["pending_writes"] == {"count": 1, "keys": ["P100"], "is_confirming": False}
 

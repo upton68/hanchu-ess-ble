@@ -3,7 +3,8 @@ model read, and battery self-scheduling (the v1.1.2 stall fix)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -46,7 +47,9 @@ def _service_info(address: str):
         name="HC:L110TEST",
         rssi=-60,
         connectable=True,
-        time=datetime.now(timezone.utc),
+        # HA's Bluetooth stack records advertisement time as a monotonic
+        # clock reading (float), not a datetime.
+        time=time.monotonic(),
         manufacturer_data={},
         service_data={},
     )
