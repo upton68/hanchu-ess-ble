@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-19
+
 ### Added
 - **Download diagnostics** for the integration (Settings → Devices &
   services → Hanchu ESS BLE → ⋮). Includes BLE health for the inverter and
@@ -323,7 +325,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.6.0...v1.7.0
