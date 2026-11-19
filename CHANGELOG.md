@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   Bluetooth addresses, logger names and serial numbers are removed.
 
 ### Development
+- Added an MIT `LICENSE`, matching hanchu-ess-ha.
 - Test suite (`pytest`) covering the BLE protocol, the BLE client against a
   fake logger, staged writes and Confirm Write (including the races fixed in
   1.4.1), clock sync, coordinator failure handling and battery polling, and
