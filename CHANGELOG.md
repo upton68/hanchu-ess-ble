@@ -25,8 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `tools/deploy-ha.sh`, `backup-ha.sh` and `restore-ha.sh` for deploying to
   a test Home Assistant over SFTP with automatic backup.
 - `manifest.json` keys reordered as Hassfest requires (no content change).
-- Removed the `category` key from `hacs.json`, which HACS validation now
-  rejects (the category is set when the repository is added to HACS).
+- Removed `category` and `description` from `hacs.json`, which HACS
+  validation rejects (HACS takes both from the repository itself), and the
+  empty `country` list.
 
 ## [1.8.1] - 2026-11-02
 
