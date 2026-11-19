@@ -89,8 +89,13 @@ async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
+    entry_dict = entry.as_dict()
+    # Bluetooth discovery keys are the device's Bluetooth address, wrapped in
+    # DiscoveryKey objects that key-based redaction can't reach. Just say
+    # which discovery sources there were.
+    entry_dict["discovery_keys"] = sorted(entry_dict.get("discovery_keys") or {})
     diag: dict[str, Any] = {
-        "entry": async_redact_data(entry.as_dict(), TO_REDACT),
+        "entry": async_redact_data(entry_dict, TO_REDACT),
         "battery_count": len(entry.options.get(CONF_BATTERY_ADDRESSES, [])),
     }
 

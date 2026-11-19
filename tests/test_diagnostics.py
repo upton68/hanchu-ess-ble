@@ -9,6 +9,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from homeassistant.components.diagnostics import REDACTED
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.discovery_flow import DiscoveryKey
 
 from custom_components.hanchu_ess_ble.const import (
     CONF_ADDRESS,
@@ -41,6 +42,9 @@ def _entry(hass) -> MockConfigEntry:
         data={CONF_ADDRESS: INVERTER, CONF_DEVICE_NAME: LOGGER_NAME},
         options={CONF_BATTERY_ADDRESSES: [BATTERY]},
         unique_id=INVERTER,
+        discovery_keys={
+            "bluetooth": (DiscoveryKey(domain="bluetooth", key=INVERTER, version=1),)
+        },
     )
     entry.add_to_hass(hass)
     return entry
@@ -51,7 +55,7 @@ async def test_diagnostics_when_not_loaded(hass: HomeAssistant):
     diag = await async_get_config_entry_diagnostics(hass, entry)
     assert diag["state"] == "not_loaded"
     assert diag["battery_count"] == 1
-    assert INVERTER not in json.dumps(diag)
+    assert INVERTER not in json.dumps(diag, default=repr)
 
 
 async def test_diagnostics_loaded_is_redacted(hass: HomeAssistant, bluetooth_mock):  # noqa: F811
@@ -86,6 +90,7 @@ async def test_diagnostics_loaded_is_redacted(hass: HomeAssistant, bluetooth_moc
     assert diag["inverter"]["rssi"] == -60
     assert 0 <= diag["inverter"]["last_advertisement_seconds_ago"] < 60
     assert diag["batteries"]["battery_1"]["values"]["B034"] == 22.45
+    assert diag["entry"]["discovery_keys"] == ["bluetooth"]
     assert diag["pending_writes"] == {"count": 1, "keys": ["P100"], "is_confirming": False}
 
     # ...and identifying details are not.
