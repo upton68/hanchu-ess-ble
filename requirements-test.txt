@@ -1,0 +1,16 @@
+# Test dependencies.
+#
+# pytest-homeassistant-custom-component pins a matching Home Assistant core,
+# pytest, pytest-asyncio and the rest of the HA test stack, so it is the only
+# test package we need on top of the integration's own requirement.
+#
+# HA core is Unix-only, so this runs on Linux and macOS (and WSL on Windows),
+# not native Windows. See CONTRIBUTING.md.
+pytest-homeassistant-custom-component>=0.13
+pycryptodome==3.20.0
+
+# Requirements of HA's bluetooth and usb components, which the integration
+# imports. The HA test package doesn't install component requirements itself.
+aiousbwatcher
+pyserial
+bluetooth-auto-recovery

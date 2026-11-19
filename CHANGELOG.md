@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-19
+
+### Added
+- **Download diagnostics** for the integration (Settings → Devices &
+  services → Hanchu ESS BLE → ⋮). Includes BLE health for the inverter and
+  each battery (presence, RSSI, consecutive failures, cycle time, last good
+  read), the latest register values with their ages, and any staged writes.
+  Bluetooth addresses, logger names and serial numbers are removed.
+
+### Development
+- Added an MIT `LICENSE`, matching hanchu-ess-ha.
+- Test suite (`pytest`) covering the BLE protocol, the BLE client against a
+  fake logger, staged writes and Confirm Write (including the races fixed in
+  1.4.1), clock sync, coordinator failure handling and battery polling, and
+  diagnostics. No Bluetooth hardware needed.
+- CI: Tests and Hassfest workflows alongside the existing HACS validation;
+  Dependabot for GitHub Actions and test dependencies.
+- `CONTRIBUTING.md`, issue templates (bug report asks for Bluetooth setup
+  details), and a pull request template.
+- `tools/deploy-ha.sh`, `backup-ha.sh` and `restore-ha.sh` for deploying to
+  a test Home Assistant over SFTP with automatic backup.
+- `manifest.json` keys reordered as Hassfest requires (no content change).
+- Removed `category` and `description` from `hacs.json`, which HACS
+  validation rejects (HACS takes both from the repository itself), and the
+  empty `country` list.
+
 ## [1.8.1] - 2026-11-02
 
 ### Fixed
@@ -299,7 +325,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.6.0...v1.7.0

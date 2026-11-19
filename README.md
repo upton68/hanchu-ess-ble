@@ -404,6 +404,14 @@ For a comprehensive mapping of all known P/L-codes, see the [protocol mapping re
 
 ---
 
+## Reporting Problems & Contributing
+
+Please raise bugs and feature requests as [GitHub issues](https://github.com/upton68/hanchu-ess-ble/issues) using the templates. For bugs, attach a **Download diagnostics** export (Settings → Devices & services → Hanchu ESS BLE → ⋮ → Download diagnostics). It shows BLE health and the latest register values, with Bluetooth addresses, logger names and serial numbers removed.
+
+To work on the integration, see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the test suite (no Bluetooth hardware needed), deploy tools, and the extra requirements for changes that write to the inverter or batteries.
+
+---
+
 ## Credits
 
 - **[Blustery7752](https://github.com/Blustery7752/hanchu-ess-ble)** — original `hanchu-ess-ble` Home Assistant integration, which provided the BLE connection, encryption, and read foundation this fork builds on
