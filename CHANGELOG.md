@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-11-20
+
+### Fixed
+- Inverter readings occasionally failing ("exceeded 60s" warnings, roughly
+  every 15–20 minutes and often on the first read after a restart). Debug
+  logs showed the inverter's Bluetooth link sometimes drops part way through
+  a read. Now:
+  - A dropped link is noticed straight away instead of waiting 10 seconds
+    for a reply that can't arrive.
+  - A read that loses its link, or gets no reply, is retried once
+    immediately in a fresh connection. Writes are never retried; a failed
+    Confirm Write keeps the changes staged as before.
+  - Log messages say what actually happened (e.g. "BLE link dropped during
+    read batch 4/5", "No reply to read batch 3/5 within 10s"). "Exceeded
+    60s" now only appears for a genuine hang.
+- Disconnecting after a failed operation is now time-limited, so a hung
+  disconnect can't stall polling.
+
+### Added
+- Diagnostics include per-device BLE counters since startup: link drops,
+  reply timeouts, operation timeouts, read retries and how many succeeded.
+
+### Development
+- Release workflow: pushing a `vX.Y.Z` tag publishes the GitHub release,
+  with that version's section of this file as the notes.
+
 ## [1.9.0] - 2026-11-19
 
 ### Added
@@ -325,7 +351,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.7.0...v1.8.0

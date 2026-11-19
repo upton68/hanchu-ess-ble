@@ -12,6 +12,7 @@ from custom_components.hanchu_ess_ble.pending_writes import (
     PENDING_TIMEOUT_SECONDS,
     PendingWriteBuffer,
 )
+from custom_components.hanchu_ess_ble.ble_client import HanchuLinkLostError
 from custom_components.hanchu_ess_ble.protocol import HanchuProtocolError
 
 
@@ -100,7 +101,10 @@ async def test_confirm_with_nothing_staged_does_nothing(buffer, writer):
     assert writer.calls == []
 
 
-@pytest.mark.parametrize("error", [TimeoutError(), HanchuProtocolError("status=1")])
+@pytest.mark.parametrize(
+    "error",
+    [TimeoutError(), HanchuProtocolError("status=1"), HanchuLinkLostError("link dropped")],
+)
 async def test_failed_confirm_keeps_writes_for_retry(buffer, writer, timers, error):
     buffer.stage("P100", 1)
     writer.error = error

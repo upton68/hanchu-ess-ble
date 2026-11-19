@@ -11,6 +11,7 @@ battery_1, battery_2, ... rather than by address.
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime
 import time
 from typing import Any
@@ -60,6 +61,12 @@ def _seconds_ago(monotonic_value: Any) -> float | None:
     if not isinstance(monotonic_value, (int, float)):
         return None
     return round(time.monotonic() - monotonic_value, 1)
+
+
+def _ble_stats(coordinator: Any) -> dict[str, Any] | None:
+    """Link drops, timeouts and retries counted since startup."""
+    stats = getattr(getattr(coordinator, "client", None), "stats", None)
+    return asdict(stats) if stats is not None else None
 
 
 def _coordinator_state(data: HanchuCoordinatorData | None) -> dict[str, Any] | None:
@@ -112,6 +119,7 @@ async def async_get_config_entry_diagnostics(
         "last_exception": repr(coordinator.last_exception)
         if coordinator.last_exception
         else None,
+        "ble_stats": _ble_stats(coordinator),
         **(_coordinator_state(coordinator.data) or {}),
     }
     diag["batteries"] = {
@@ -120,6 +128,7 @@ async def async_get_config_entry_diagnostics(
             "last_exception": repr(battery.last_exception)
             if battery.last_exception
             else None,
+            "ble_stats": _ble_stats(battery),
             **(_coordinator_state(battery.data) or {}),
         }
         for index, battery in enumerate(coordinator.battery_coordinators, start=1)
