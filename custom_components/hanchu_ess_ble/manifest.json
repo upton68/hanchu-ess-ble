@@ -1,12 +1,6 @@
 {
   "domain": "hanchu_ess_ble",
   "name": "Hanchu ESS BLE",
-  "version": "1.8.1",
-  "documentation": "https://github.com/upton68/hanchu-ess-ble",
-  "integration_type": "device",
-  "requirements": ["pycryptodome==3.20.0"],
-  "codeowners": ["@upton68"],
-  "dependencies": ["bluetooth_adapters"],
   "bluetooth": [
     {
       "local_name": "HC:L110*"
@@ -30,8 +24,22 @@
       "local_name": "HC:L122*"
     }
   ],
-  "loggers": ["Crypto"],
-  "iot_class": "local_polling",
+  "codeowners": [
+    "@upton68"
+  ],
   "config_flow": true,
-  "issue_tracker": "https://github.com/upton68/hanchu-ess-ble/issues"
+  "dependencies": [
+    "bluetooth_adapters"
+  ],
+  "documentation": "https://github.com/upton68/hanchu-ess-ble",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/upton68/hanchu-ess-ble/issues",
+  "loggers": [
+    "Crypto"
+  ],
+  "requirements": [
+    "pycryptodome==3.20.0"
+  ],
+  "version": "1.8.1"
 }

@@ -1,2 +1,9 @@
 __pycache__/
 *.pyc
+
+# Local deploy backups (tools/backup-ha.sh)
+.ha-deploy-backups/
+
+# Test / tooling caches
+.pytest_cache/
+.venv/
