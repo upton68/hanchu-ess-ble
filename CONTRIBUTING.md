@@ -163,8 +163,26 @@ The integration follows [Semantic Versioning](https://semver.org/):
 - **MAJOR** — breaking changes (renamed/removed entities or services, or
   anything needing user action after upgrading).
 
-Releases are cut by the maintainer: bump `version` in
-`custom_components/hanchu_ess_ble/manifest.json`, move the `[Unreleased]`
-notes in `CHANGELOG.md` under a new `## [X.Y.Z] - YYYY-MM-DD` heading, merge
-to `main`, then tag `vX.Y.Z` and publish a GitHub release from the tag. HACS
-offers the new tag to users.
+Releases are cut by the maintainer:
+
+1. In a PR, bump `version` in `custom_components/hanchu_ess_ble/manifest.json`
+   and move the `[Unreleased]` notes in `CHANGELOG.md` under a new
+   `## [X.Y.Z] - YYYY-MM-DD` heading (and update the compare links at the
+   bottom). Merge it to `main`.
+2. Tag the merge commit and push the tag:
+
+   ```bash
+   git checkout main && git pull
+   git tag -a vX.Y.Z -m "Short summary"   # becomes "vX.Y.Z — Short summary"
+   git push origin vX.Y.Z
+   ```
+
+The **Release** workflow (`.github/workflows/release.yml`) then checks the
+tag is on `main` and matches `manifest.json`, and publishes a GitHub release
+with that version's `CHANGELOG.md` section as the notes. A plain
+`git tag vX.Y.Z` works too; the title is then just the version. HACS offers
+the new tag to users.
+
+If the workflow fails (tag not on `main`, version mismatch, or no matching
+CHANGELOG section), fix it on `main`, delete the tag
+(`git push origin :vX.Y.Z && git tag -d vX.Y.Z`) and tag again.

@@ -1,0 +1,83 @@
+name: Release
+
+# Publishes a GitHub release when a vX.Y.Z tag is pushed.
+#
+#   git tag -a v1.9.0 -m "Download diagnostics"   # message becomes the title
+#   git push origin v1.9.0
+#
+# Checks first that the tag is on main and matches manifest.json, and uses
+# the matching CHANGELOG.md section as the release notes. HACS installs from
+# the tagged source, so there is nothing to build.
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check tag is on main
+        run: |
+          git fetch origin main
+          # checkout can leave the tag as a lightweight ref; re-fetch the real
+          # (possibly annotated) tag so its message is available for the title.
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME is not on main. Merge first, then tag the merge commit."
+            exit 1
+          fi
+
+      - name: Check manifest version matches tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          MANIFEST=$(python3 -c "import json; print(json.load(open('custom_components/hanchu_ess_ble/manifest.json'))['version'])")
+          if [ "$MANIFEST" != "$VERSION" ]; then
+            echo "::error::manifest.json version is $MANIFEST but the tag is $GITHUB_REF_NAME. Bump manifest.json, merge, then re-tag."
+            exit 1
+          fi
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VERSION" '
+            index($0, "## [" ver "]") == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md | sed -e '/./,$!d' > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::No '## [$VERSION]' section with notes in CHANGELOG.md."
+            exit 1
+          fi
+          cat notes.md
+
+      - name: Work out the title
+        run: |
+          # An annotated tag's message becomes the title ("v1.9.0 — <message>").
+          # A lightweight tag gives just the version.
+          TITLE="$GITHUB_REF_NAME"
+          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" = "tag" ]; then
+            SUBJECT=$(git for-each-ref "refs/tags/$GITHUB_REF_NAME" --format='%(contents:subject)')
+            if [ -n "$SUBJECT" ]; then
+              TITLE="$GITHUB_REF_NAME — $SUBJECT"
+            fi
+          fi
+          echo "TITLE=$TITLE" >> "$GITHUB_ENV"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$TITLE" \
+            --notes-file notes.md \
+            --verify-tag
