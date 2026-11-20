@@ -14,6 +14,8 @@ import json
 from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from bleak.exc import BleakError
+
 from custom_components.hanchu_ess_ble.protocol import (
     decrypt_message,
     derive_session_key,
@@ -116,6 +118,9 @@ class FakeBleakClient:
         self.drop_link_on_request: list[int] = []
         # Swallow (never answer) these request writes, with the link up.
         self.ignore_request: list[int] = []
+        # Make the GATT write itself fail on these requests, as when the link
+        # drops just as a request is sent. Maps request number -> error text.
+        self.fail_send_on_request: dict[int, str] = {}
         self._requests_this_connection = 0
 
     def connect(self, disconnected_callback=None) -> "FakeBleakClient":
@@ -153,6 +158,10 @@ class FakeBleakClient:
                 # Let the caller start waiting for the reply first.
                 asyncio.get_running_loop().call_soon(self._drop_link)
                 return
+            if n in self.fail_send_on_request:
+                message = self.fail_send_on_request.pop(n)
+                self._drop_link()
+                raise BleakError(message)
             if n in self.ignore_request:
                 self.ignore_request.remove(n)
                 return

@@ -16,7 +16,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - A dropped link is noticed straight away instead of waiting 10 seconds
     for a reply that can't arrive.
   - A read that loses its link, or gets no reply, is retried once
-    immediately in a fresh connection. Writes are never retried; a failed
+    immediately in a fresh connection. That includes a link that drops just
+    as a request is sent, which Bluetooth reports as a write error such as
+    "Insufficient authorization (8)", "Characteristic … was not found" or
+    GATT error 133. Writes are never retried; a failed
     Confirm Write keeps the changes staged as before.
   - Log messages say what actually happened (e.g. "BLE link dropped during
     read batch 4/5", "No reply to read batch 3/5 within 10s"). "Exceeded

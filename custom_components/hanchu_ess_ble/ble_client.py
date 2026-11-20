@@ -292,10 +292,8 @@ class HanchuBleClient:
                     batch,
                     payload.hex(),
                 )
-                await client.write_gatt_char(
-                    BLE_WRITE_CHARACTERISTIC_UUID,
-                    payload,
-                    response=False,
+                await self._async_send(
+                    client, payload, f"read batch {number}/{len(batches)}"
                 )
                 replies.append(
                     await self._async_wait_for_reply(
@@ -340,11 +338,7 @@ class HanchuBleClient:
                 value,
                 payload.hex(),
             )
-            await client.write_gatt_char(
-                BLE_WRITE_CHARACTERISTIC_UUID,
-                payload,
-                response=False,
-            )
+            await self._async_send(client, payload, f"write {key}")
             reply = await self._async_wait_for_reply(
                 encrypted=encrypted, step=f"write {key}"
             )
@@ -381,9 +375,7 @@ class HanchuBleClient:
                     key,
                     value,
                 )
-                await client.write_gatt_char(
-                    BLE_WRITE_CHARACTERISTIC_UUID, payload, response=False
-                )
+                await self._async_send(client, payload, f"write {key}")
                 reply = await self._async_wait_for_reply(
                     encrypted=encrypted, step=f"write {key}"
                 )
@@ -508,10 +500,16 @@ class HanchuBleClient:
             self.address,
             BLE_NOTIFY_CHARACTERISTIC_UUID,
         )
-        await client.start_notify(
-            BLE_NOTIFY_CHARACTERISTIC_UUID,
-            self._notification_handler,
-        )
+        try:
+            await client.start_notify(
+                BLE_NOTIFY_CHARACTERISTIC_UUID,
+                self._notification_handler,
+            )
+        except BleakError as err:
+            self.stats.link_drops += 1
+            raise HanchuLinkLostError(
+                f"BLE link dropped while starting notifications: {err}"
+            ) from err
 
     async def _async_stop_notify(self, client: BleakClient) -> None:
         """Stop notifications if possible."""
@@ -519,6 +517,29 @@ class HanchuBleClient:
             await client.stop_notify(BLE_NOTIFY_CHARACTERISTIC_UUID)
         except Exception:
             _LOGGER.debug("Failed to stop notifications for %s", self.address, exc_info=True)
+
+    async def _async_send(self, client: BleakClient, payload: bytes, step: str) -> None:
+        """Write a request to the logger, treating a GATT error as a dropped link.
+
+        The soak test showed the logger's link drop also surfaces here, when
+        it happens just as a request is sent rather than while waiting for
+        the reply: ESPHome reports "changed connection status while waiting
+        for BluetoothGATTWriteResponse ... Insufficient authorization (8)",
+        "Characteristic ...ff02 was not found" or GATT error 133. Raising
+        HanchuLinkLostError lets reads retry these like any other drop;
+        writes still never retry.
+        """
+        try:
+            await client.write_gatt_char(
+                BLE_WRITE_CHARACTERISTIC_UUID,
+                payload,
+                response=False,
+            )
+        except BleakError as err:
+            self.stats.link_drops += 1
+            raise HanchuLinkLostError(
+                f"BLE link dropped while sending {step}: {err}"
+            ) from err
 
     async def _async_next_notification(self, timeout: float, step: str) -> bytes:
         """Return the next notification, or raise if the link drops or it times out."""
@@ -545,11 +566,7 @@ class HanchuBleClient:
             token,
             payload.hex(),
         )
-        await client.write_gatt_char(
-            BLE_WRITE_CHARACTERISTIC_UUID,
-            payload,
-            response=False,
-        )
+        await self._async_send(client, payload, "handshake")
 
         while True:
             notification = await self._async_next_notification(

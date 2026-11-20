@@ -296,3 +296,63 @@ async def test_hung_disconnect_does_not_block_a_good_read(client, bleak):
     with patched_ble(bleak):
         reply = await client.async_read_values(["P071"])
     assert reply.as_dict() == {"P071": 64}
+
+
+# --- Link drops that surface as a failed GATT write (soak test, 20 Nov) -------
+
+# Error texts seen in the soak-test log when the link dropped just as a
+# request was being sent.
+SEND_ERRORS = [
+    "Peripheral 94:E6:86:1D:6D:8E changed connection status while waiting for "
+    "BluetoothGATTWriteResponse, BluetoothGATTErrorResponse: Insufficient authorization (8)",
+    "Characteristic 0000ff02-0000-1000-8000-00805f9b34fb was not found!",
+    "Bluetooth GATT Error address=94:E6:86:1D:6D:8E handle=45 error=133 description=Error",
+]
+
+
+@pytest.mark.usefixtures("fast_retry")
+@pytest.mark.parametrize("message", SEND_ERRORS)
+async def test_failed_send_mid_read_is_retried(client, bleak, many_keys, message):
+    bleak.fail_send_on_request = {2: message}
+    with patched_ble(bleak) as connect:
+        reply = await client.async_read_values(many_keys)
+    assert len(reply.as_dict()) == 30
+    assert connect.await_count == 2
+    assert client.stats.link_drops == 1
+    assert client.stats.read_retries_succeeded == 1
+
+
+@pytest.mark.usefixtures("fast_retry")
+async def test_failed_send_error_names_step_and_cause(client, bleak, many_keys):
+    # Fails on both attempts, so the error reaches the caller.
+    bleak.fail_send_on_request = {2: SEND_ERRORS[0]}
+    bleak.drop_link_on_request = [3]
+    with patched_ble(bleak):
+        with pytest.raises(ble_client_module.HanchuLinkLostError) as excinfo:
+            await client.async_read_values(many_keys)
+    assert client.stats.read_retries == 1
+    assert client.stats.read_retries_succeeded == 0
+    # First attempt's message kept the step and the original cause.
+    assert client.stats.link_drops == 2
+    assert "read batch 3/3" in str(excinfo.value)
+
+
+@pytest.mark.usefixtures("fast_retry")
+async def test_failed_send_message_includes_cause(client, bleak):
+    bleak.fail_send_on_request = {1: SEND_ERRORS[0]}
+    with patched_ble(bleak):
+        with pytest.raises(ble_client_module.HanchuLinkLostError) as excinfo:
+            await client.async_write_value("P100", 1)
+    message = str(excinfo.value)
+    assert "while sending write P100" in message
+    assert "Insufficient authorization (8)" in message
+
+
+@pytest.mark.usefixtures("fast_retry")
+async def test_failed_send_during_write_is_not_retried(client, bleak, logger):
+    bleak.fail_send_on_request = {2: SEND_ERRORS[0]}
+    with patched_ble(bleak) as connect:
+        with pytest.raises(ble_client_module.HanchuLinkLostError, match="sending write P101"):
+            await client.async_write_values([("P100", 1), ("P101", 2)])
+    assert connect.await_count == 1
+    assert logger.write_requests == [("P100", 1)]
