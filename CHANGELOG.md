@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Development
+- Tests now set up the whole integration with fake inverter and battery
+  clients, covering the config, reconfigure and options flows, every
+  control (Inverter Power, preheating switches, staged numbers/work
+  mode/time slots, Confirm Write, Discard Changes, Battery Recovery, Sync
+  Clock), the services, and unload/reload. 219 tests in total.
+- Release workflow leaves an existing release alone instead of failing
+  (e.g. when the release was created on the GitHub page).
+
 ## [1.9.1] - 2026-11-21
 
 ### Fixed
