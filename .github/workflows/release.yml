@@ -77,6 +77,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Creating a release on the GitHub page also creates the tag, which
+          # starts this workflow. Leave a release that already exists alone.
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "::notice::Release $GITHUB_REF_NAME already exists; leaving it unchanged."
+            exit 0
+          fi
           gh release create "$GITHUB_REF_NAME" \
             --title "$TITLE" \
             --notes-file notes.md \
