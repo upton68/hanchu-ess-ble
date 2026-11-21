@@ -14,6 +14,8 @@ import json
 from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from bleak.exc import BleakError
+
 from custom_components.hanchu_ess_ble.protocol import (
     decrypt_message,
     derive_session_key,
@@ -102,20 +104,67 @@ class FakeBleakClient:
     def __init__(self, logger: FakeLogger) -> None:
         self.logger = logger
         self._handler: Callable[[Any, bytearray], None] | None = None
+        self.disconnected_callback: Callable[[Any], None] | None = None
+        self.is_connected = False
         self.disconnected = False
+        self.connections = 0
+        self.stop_notify_calls = 0
         # Set to an Event to make the matching call hang until it's set.
         self.hang_on_write: asyncio.Event | None = None
         self.hang_on_disconnect: asyncio.Event | None = None
+        # Drop the link on these request writes (1-based count of non-
+        # handshake writes per connection), like the real logger sometimes
+        # does mid-read. Each entry is consumed once.
+        self.drop_link_on_request: list[int] = []
+        # Swallow (never answer) these request writes, with the link up.
+        self.ignore_request: list[int] = []
+        # Make the GATT write itself fail on these requests, as when the link
+        # drops just as a request is sent. Maps request number -> error text.
+        self.fail_send_on_request: dict[int, str] = {}
+        self._requests_this_connection = 0
+
+    def connect(self, disconnected_callback=None) -> "FakeBleakClient":
+        """What establish_connection does: (re)connect and remember the callback."""
+        self.disconnected_callback = disconnected_callback
+        self.is_connected = True
+        self.disconnected = False
+        self.connections += 1
+        self._requests_this_connection = 0
+        return self
+
+    def _drop_link(self) -> None:
+        self.is_connected = False
+        if self.disconnected_callback is not None:
+            self.disconnected_callback(self)
 
     async def start_notify(self, _uuid: str, handler) -> None:
         self._handler = handler
 
     async def stop_notify(self, _uuid: str) -> None:
+        if not self.is_connected:
+            raise AssertionError("stop_notify on a dropped link (real bleak raises here)")
+        self.stop_notify_calls += 1
         self._handler = None
 
     async def write_gatt_char(self, _uuid: str, payload: bytes, response=False) -> None:
         if self.hang_on_write is not None:
             await self.hang_on_write.wait()
+        is_handshake = payload[0] == 0x05 and len(payload) == 7
+        if not is_handshake:
+            self._requests_this_connection += 1
+            n = self._requests_this_connection
+            if n in self.drop_link_on_request:
+                self.drop_link_on_request.remove(n)
+                # Let the caller start waiting for the reply first.
+                asyncio.get_running_loop().call_soon(self._drop_link)
+                return
+            if n in self.fail_send_on_request:
+                message = self.fail_send_on_request.pop(n)
+                self._drop_link()
+                raise BleakError(message)
+            if n in self.ignore_request:
+                self.ignore_request.remove(n)
+                return
         for notification in self.logger.handle(bytes(payload)):
             assert self._handler is not None, "write before start_notify"
             self._handler(None, bytearray(notification))
@@ -123,14 +172,23 @@ class FakeBleakClient:
     async def disconnect(self) -> None:
         if self.hang_on_disconnect is not None:
             await self.hang_on_disconnect.wait()
+        was_connected = self.is_connected
+        self.is_connected = False
         self.disconnected = True
+        if was_connected and self.disconnected_callback is not None:
+            # Real bleak calls the callback for our own disconnects too.
+            self.disconnected_callback(self)
 
 
 @contextmanager
 def patched_ble(bleak_client: FakeBleakClient, *, device_found: bool = True):
     """Route HanchuBleClient's connection calls to `bleak_client`."""
     base = "custom_components.hanchu_ess_ble.ble_client"
-    connect = AsyncMock(return_value=bleak_client)
+    connect = AsyncMock(
+        side_effect=lambda *_args, disconnected_callback=None, **_kwargs: (
+            bleak_client.connect(disconnected_callback)
+        )
+    )
     with (
         patch(
             f"{base}.bluetooth.async_ble_device_from_address",

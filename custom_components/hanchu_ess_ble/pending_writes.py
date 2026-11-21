@@ -15,6 +15,8 @@ from typing import Any, Callable
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_call_later
 
+from bleak.exc import BleakError
+
 from .protocol import HanchuProtocolError
 
 _LOGGER = logging.getLogger(__name__)
@@ -79,8 +81,9 @@ class PendingWriteBuffer:
         abandoned. async_write_values reuses the proven single-key write
         path instead, just inside one shared connection.
 
-        If any pair fails to confirm (TimeoutError, or a non-zero status
-        code raised as HanchuProtocolError), the buffer is left intact so
+        If any pair fails to confirm (TimeoutError, a dropped link or other
+        BleakError, or a non-zero status code raised as HanchuProtocolError),
+        the buffer is left intact so
         the failed edit(s) can be retried rather than silently lost.
 
         Concurrent callers are serialised: a call arriving while another
@@ -103,7 +106,7 @@ class PendingWriteBuffer:
             pairs = list(self._pending.items())
             try:
                 await self.ble_client.async_write_values(pairs)
-            except (TimeoutError, HanchuProtocolError):
+            except (TimeoutError, HanchuProtocolError, BleakError):
                 _LOGGER.warning(
                     "Failed to confirm %d staged register write(s); "
                     "changes remain staged for retry",

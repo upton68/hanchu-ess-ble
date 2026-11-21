@@ -46,6 +46,41 @@ _DEFAULT_READ_BATCH_SIZE = 12
 # timeout guarantees the coordinator's update always completes or raises
 # within a bounded time, regardless of which internal call gets stuck.
 _TOTAL_OPERATION_TIMEOUT = 60.0
+# Pause before the single retry of a read whose link dropped or went quiet,
+# giving the logger and the proxy a moment to release the old connection.
+_READ_RETRY_DELAY = 1.0
+# Limit for stop_notify + disconnect during cleanup. Cleanup also runs after
+# the overall timeout has fired, so it needs its own bound or a hung
+# disconnect there would block forever.
+_CLOSE_TIMEOUT = 10.0
+
+# Placed on the notification queue when the BLE link drops, so a reply wait
+# fails straight away instead of sitting out its full timeout.
+_LINK_LOST = object()
+
+
+class HanchuLinkLostError(BleakError):
+    """The BLE link dropped in the middle of an operation."""
+
+
+class HanchuReplyTimeoutError(TimeoutError):
+    """The logger sent no reply to a request in time (link still up)."""
+
+
+class HanchuOperationTimeoutError(TimeoutError):
+    """A whole connect/operate/disconnect cycle exceeded its time limit."""
+
+
+@dataclass(slots=True)
+class HanchuBleStats:
+    """Running counts of BLE problems, shown in diagnostics."""
+
+    link_drops: int = 0
+    reply_timeouts: int = 0
+    operation_timeouts: int = 0
+    read_retries: int = 0
+    read_retries_succeeded: int = 0
+    last_error: str | None = None
 
 
 @dataclass(slots=True)
@@ -134,9 +169,17 @@ class HanchuBleClient:
         self.hass = hass
         self.address = address
         self.name = name
+        self.stats = HanchuBleStats()
         self._session = HanchuBleSession()
-        self._notification_queue: asyncio.Queue[bytes] = asyncio.Queue()
+        self._notification_queue: asyncio.Queue[Any] = asyncio.Queue()
         self._connection_lock = asyncio.Lock()
+        # Identifies the current operation, so a disconnect callback that
+        # arrives late from an earlier operation can't fail the next one.
+        self._operation_id = 0
+
+    # ------------------------------------------------------------------
+    # Public operations
+    # ------------------------------------------------------------------
 
     async def async_read_values(
         self,
@@ -144,115 +187,37 @@ class HanchuBleClient:
         *,
         encrypted: bool = True,
     ) -> HanchuReply:
-        """Connect to the inverter, read values, then disconnect."""
+        """Connect, read values, then disconnect.
+
+        If the link drops or the logger stops replying part way through,
+        the read is retried once straight away in a fresh connection. The
+        logger occasionally drops the link mid-read (seen in debug logs:
+        a reply goes missing on the third or fourth batch, and the
+        characteristic has vanished by the time notifications are
+        stopped), and the next attempt nearly always succeeds. Reads are
+        safe to repeat; writes are never retried.
+
+        A whole-operation timeout (a genuine hang) is not retried.
+        """
         async with self._connection_lock:
-            return await self._async_read_values_locked(keys, encrypted=encrypted)
-
-    async def _async_read_values_locked(
-        self,
-        keys: list[str],
-        *,
-        encrypted: bool = True,
-    ) -> HanchuReply:
-        """Body of async_read_values, run while holding the connection lock.
-
-        The entire connect -> operate -> disconnect sequence is wrapped in
-        one outer timeout (see _perform_with_timeout) rather than protecting
-        only the connection step. start_notify(), write_gatt_char(), and
-        disconnect() have no timeout of their own and can hang indefinitely
-        under BLE proxy contention — a hang in any of them would otherwise
-        freeze this coordinator's update cycle permanently with no exception
-        ever raised.
-        """
-        return await self._perform_with_timeout(
-            self._async_read_values_inner(keys, encrypted=encrypted)
-        )
-
-    async def _async_read_values_inner(
-        self,
-        keys: list[str],
-        *,
-        encrypted: bool = True,
-    ) -> HanchuReply:
-        """Unwrapped body of the read operation — always call via a timeout wrapper."""
-        _LOGGER.debug(
-            "Starting Hanchu BLE read address=%s keys=%s encrypted=%s",
-            self.address,
-            keys,
-            encrypted,
-        )
-        ble_device = bluetooth.async_ble_device_from_address(
-            self.hass,
-            self.address,
-            connectable=True,
-        )
-        if ble_device is None:
-            raise BleakError(f"No connectable BLE device found for {self.address}")
-
-        self._session.reset()
-        self._drain_notifications()
-        client = await establish_connection(
-            BleakClientWithServiceCache,
-            ble_device,
-            self.name,
-            max_attempts=3,
-        )
-        try:
-            _LOGGER.debug("Connected to Hanchu inverter address=%s", self.address)
-            await self._async_start_notify(client)
-            if encrypted:
-                await self._async_perform_handshake(client)
-
-            replies: list[HanchuReply] = []
-            for batch in _batched(keys, _DEFAULT_READ_BATCH_SIZE):
-                payload = self._session.encode_read_request(batch, encrypt=encrypted)
+            try:
+                return await self._perform_with_timeout(
+                    self._async_read_values_inner(keys, encrypted=encrypted)
+                )
+            except (HanchuLinkLostError, HanchuReplyTimeoutError) as err:
+                self.stats.read_retries += 1
                 _LOGGER.debug(
-                    "Writing Hanchu read request address=%s keys=%s payload=%s",
+                    "Hanchu BLE read for address=%s failed (%s); retrying once",
                     self.address,
-                    batch,
-                    payload.hex(),
+                    err,
                 )
-                await client.write_gatt_char(
-                    BLE_WRITE_CHARACTERISTIC_UUID,
-                    payload,
-                    response=False,
-                )
-                replies.append(await self._async_wait_for_reply(encrypted=encrypted))
-
-            reply = _merge_replies(replies)
-            _LOGGER.debug(
-                "Completed Hanchu BLE read address=%s tid=%s values=%s",
-                self.address,
-                reply.tid,
-                reply.as_dict(),
+            await asyncio.sleep(_READ_RETRY_DELAY)
+            reply = await self._perform_with_timeout(
+                self._async_read_values_inner(keys, encrypted=encrypted)
             )
+            self.stats.read_retries_succeeded += 1
+            _LOGGER.debug("Hanchu BLE read retry succeeded for address=%s", self.address)
             return reply
-        finally:
-            await self._async_stop_notify(client)
-            await client.disconnect()
-            _LOGGER.debug("Disconnected from Hanchu inverter address=%s", self.address)
-
-    async def _perform_with_timeout(self, coro):
-        """Run a connect/operate/disconnect coroutine under one overall timeout.
-
-        If the wrapped coroutine hangs anywhere — connection establishment,
-        notify setup, a GATT write, or disconnect — this raises
-        asyncio.TimeoutError after _TOTAL_OPERATION_TIMEOUT seconds instead of
-        blocking forever. That lets the coordinator's existing except
-        Exception handling treat it as a normal failed cycle (incrementing
-        consecutive_failures, retaining last-known values, and trying again
-        next cycle) rather than the update silently never completing.
-        """
-        try:
-            return await asyncio.wait_for(coro, timeout=_TOTAL_OPERATION_TIMEOUT)
-        except asyncio.TimeoutError:
-            _LOGGER.warning(
-                "Hanchu BLE operation for address=%s exceeded %.0fs and was "
-                "aborted — likely a hung connect/notify/write/disconnect call",
-                self.address,
-                _TOTAL_OPERATION_TIMEOUT,
-            )
-            raise
 
     async def async_write_value(
         self,
@@ -263,87 +228,9 @@ class HanchuBleClient:
     ) -> HanchuReply:
         """Connect to the inverter, write a single value, then disconnect."""
         async with self._connection_lock:
-            return await self._async_write_value_locked(key, value, encrypted=encrypted)
-
-    async def _async_write_value_locked(
-        self,
-        key: str,
-        value,
-        *,
-        encrypted: bool = True,
-    ) -> HanchuReply:
-        """Body of async_write_value, run while holding the connection lock.
-
-        See _async_read_values_locked — the same outer-timeout wrapping
-        applies here, covering the full connect/notify/write/disconnect
-        sequence rather than just connection establishment.
-        """
-        return await self._perform_with_timeout(
-            self._async_write_value_inner(key, value, encrypted=encrypted)
-        )
-
-    async def _async_write_value_inner(
-        self,
-        key: str,
-        value,
-        *,
-        encrypted: bool = True,
-    ) -> HanchuReply:
-        """Unwrapped body of the write operation — always call via a timeout wrapper."""
-        _LOGGER.debug(
-            "Starting Hanchu BLE write address=%s key=%s value=%s encrypted=%s",
-            self.address,
-            key,
-            value,
-            encrypted,
-        )
-        ble_device = bluetooth.async_ble_device_from_address(
-            self.hass,
-            self.address,
-            connectable=True,
-        )
-        if ble_device is None:
-            raise BleakError(f"No connectable BLE device found for {self.address}")
-
-        self._session.reset()
-        self._drain_notifications()
-        client = await establish_connection(
-            BleakClientWithServiceCache,
-            ble_device,
-            self.name,
-            max_attempts=3,
-        )
-        try:
-            _LOGGER.debug("Connected to Hanchu inverter address=%s", self.address)
-            await self._async_start_notify(client)
-            if encrypted:
-                await self._async_perform_handshake(client)
-
-            payload = self._session.encode_write_request(key, value, encrypt=encrypted)
-            _LOGGER.debug(
-                "Writing Hanchu write request address=%s key=%s value=%s payload=%s",
-                self.address,
-                key,
-                value,
-                payload.hex(),
+            return await self._perform_with_timeout(
+                self._async_write_value_inner(key, value, encrypted=encrypted)
             )
-            await client.write_gatt_char(
-                BLE_WRITE_CHARACTERISTIC_UUID,
-                payload,
-                response=False,
-            )
-            reply = await self._async_wait_for_reply(encrypted=encrypted)
-            _LOGGER.debug(
-                "Completed Hanchu BLE write address=%s tid=%s reply=%s",
-                self.address,
-                reply.tid,
-                reply.as_dict(),
-            )
-            return reply
-        finally:
-            await self._async_stop_notify(client)
-            await client.disconnect()
-            _LOGGER.debug("Disconnected from Hanchu inverter address=%s", self.address)
 
     async def async_write_values(
         self,
@@ -367,11 +254,103 @@ class HanchuBleClient:
 
         Raises on the first non-zero status code rather than continuing,
         so a partial failure is visible instead of silently swallowed.
+        Never retried automatically.
         """
         async with self._connection_lock:
             return await self._perform_with_timeout(
                 self._async_write_values_inner(pairs, encrypted=encrypted)
             )
+
+    # ------------------------------------------------------------------
+    # Operation bodies — always called via _perform_with_timeout
+    # ------------------------------------------------------------------
+
+    async def _async_read_values_inner(
+        self,
+        keys: list[str],
+        *,
+        encrypted: bool = True,
+    ) -> HanchuReply:
+        """Read keys in batches over one connection."""
+        _LOGGER.debug(
+            "Starting Hanchu BLE read address=%s keys=%s encrypted=%s",
+            self.address,
+            keys,
+            encrypted,
+        )
+        batches = _batched(keys, _DEFAULT_READ_BATCH_SIZE)
+        client = await self._async_open(encrypted=encrypted)
+        try:
+            replies: list[HanchuReply] = []
+            for number, batch in enumerate(batches, start=1):
+                payload = self._session.encode_read_request(batch, encrypt=encrypted)
+                _LOGGER.debug(
+                    "Writing Hanchu read request address=%s batch=%d/%d keys=%s payload=%s",
+                    self.address,
+                    number,
+                    len(batches),
+                    batch,
+                    payload.hex(),
+                )
+                await self._async_send(
+                    client, payload, f"read batch {number}/{len(batches)}"
+                )
+                replies.append(
+                    await self._async_wait_for_reply(
+                        encrypted=encrypted,
+                        step=f"read batch {number}/{len(batches)}",
+                    )
+                )
+
+            reply = _merge_replies(replies)
+            _LOGGER.debug(
+                "Completed Hanchu BLE read address=%s tid=%s values=%s",
+                self.address,
+                reply.tid,
+                reply.as_dict(),
+            )
+            return reply
+        finally:
+            await self._async_close(client)
+
+    async def _async_write_value_inner(
+        self,
+        key: str,
+        value,
+        *,
+        encrypted: bool = True,
+    ) -> HanchuReply:
+        """Write one key."""
+        _LOGGER.debug(
+            "Starting Hanchu BLE write address=%s key=%s value=%s encrypted=%s",
+            self.address,
+            key,
+            value,
+            encrypted,
+        )
+        client = await self._async_open(encrypted=encrypted)
+        try:
+            payload = self._session.encode_write_request(key, value, encrypt=encrypted)
+            _LOGGER.debug(
+                "Writing Hanchu write request address=%s key=%s value=%s payload=%s",
+                self.address,
+                key,
+                value,
+                payload.hex(),
+            )
+            await self._async_send(client, payload, f"write {key}")
+            reply = await self._async_wait_for_reply(
+                encrypted=encrypted, step=f"write {key}"
+            )
+            _LOGGER.debug(
+                "Completed Hanchu BLE write address=%s tid=%s reply=%s",
+                self.address,
+                reply.tid,
+                reply.as_dict(),
+            )
+            return reply
+        finally:
+            await self._async_close(client)
 
     async def _async_write_values_inner(
         self,
@@ -379,28 +358,14 @@ class HanchuBleClient:
         *,
         encrypted: bool = True,
     ) -> list[HanchuReply]:
-        """Unwrapped body — always call via async_write_values."""
+        """Write several keys sequentially over one connection."""
         _LOGGER.debug(
             "Starting Hanchu BLE multi-value write address=%s pairs=%s",
             self.address,
             pairs,
         )
-        ble_device = bluetooth.async_ble_device_from_address(
-            self.hass, self.address, connectable=True
-        )
-        if ble_device is None:
-            raise BleakError(f"No connectable BLE device found for {self.address}")
-
-        self._session.reset()
-        self._drain_notifications()
-        client = await establish_connection(
-            BleakClientWithServiceCache, ble_device, self.name, max_attempts=3
-        )
+        client = await self._async_open(encrypted=encrypted)
         try:
-            await self._async_start_notify(client)
-            if encrypted:
-                await self._async_perform_handshake(client)
-
             replies: list[HanchuReply] = []
             for key, value in pairs:
                 payload = self._session.encode_write_request(key, value, encrypt=encrypted)
@@ -410,10 +375,10 @@ class HanchuBleClient:
                     key,
                     value,
                 )
-                await client.write_gatt_char(
-                    BLE_WRITE_CHARACTERISTIC_UUID, payload, response=False
+                await self._async_send(client, payload, f"write {key}")
+                reply = await self._async_wait_for_reply(
+                    encrypted=encrypted, step=f"write {key}"
                 )
-                reply = await self._async_wait_for_reply(encrypted=encrypted)
 
                 status = reply.as_dict().get(key)
                 if status != 0:
@@ -430,9 +395,103 @@ class HanchuBleClient:
             )
             return replies
         finally:
-            await self._async_stop_notify(client)
-            await client.disconnect()
-            _LOGGER.debug("Disconnected from Hanchu inverter address=%s", self.address)
+            await self._async_close(client)
+
+    # ------------------------------------------------------------------
+    # Connection handling
+    # ------------------------------------------------------------------
+
+    async def _perform_with_timeout(self, coro):
+        """Run a connect/operate/disconnect coroutine under one overall timeout.
+
+        If the wrapped coroutine hangs anywhere — connection establishment,
+        notify setup, a GATT write, or disconnect — this raises
+        HanchuOperationTimeoutError after _TOTAL_OPERATION_TIMEOUT seconds
+        instead of blocking forever, so the coordinator treats it as a
+        normal failed cycle.
+
+        Only the overall limit is reported as "exceeded"; a reply timeout or
+        dropped link inside the operation propagates unchanged with its own
+        message (previously every TimeoutError was logged as a 60s hang).
+        """
+        try:
+            async with asyncio.timeout(_TOTAL_OPERATION_TIMEOUT) as limit:
+                return await coro
+        except TimeoutError as err:
+            if limit.expired():
+                self.stats.operation_timeouts += 1
+                message = (
+                    f"BLE operation exceeded {_TOTAL_OPERATION_TIMEOUT:.0f}s and "
+                    "was aborted (hung connect/notify/write/disconnect)"
+                )
+                self.stats.last_error = message
+                _LOGGER.warning("Hanchu %s for address=%s", message, self.address)
+                raise HanchuOperationTimeoutError(message) from err
+            self.stats.last_error = str(err)
+            raise
+        except HanchuLinkLostError as err:
+            self.stats.last_error = str(err)
+            raise
+
+    async def _async_open(self, *, encrypted: bool) -> BleakClient:
+        """Connect, start notifications and (if encrypted) do the handshake.
+
+        Disconnects again if any of that fails, so a half-open connection
+        is never left behind.
+        """
+        ble_device = bluetooth.async_ble_device_from_address(
+            self.hass,
+            self.address,
+            connectable=True,
+        )
+        if ble_device is None:
+            raise BleakError(f"No connectable BLE device found for {self.address}")
+
+        self._operation_id += 1
+        operation_id = self._operation_id
+        self._session.reset()
+        self._drain_notifications()
+        client = await establish_connection(
+            BleakClientWithServiceCache,
+            ble_device,
+            self.name,
+            disconnected_callback=lambda _client: self._handle_disconnect(operation_id),
+            max_attempts=3,
+        )
+        _LOGGER.debug("Connected to Hanchu inverter address=%s", self.address)
+        try:
+            await self._async_start_notify(client)
+            if encrypted:
+                await self._async_perform_handshake(client)
+        except BaseException:
+            await self._async_close(client)
+            raise
+        return client
+
+    async def _async_close(self, client: BleakClient) -> None:
+        """Stop notifications (if still connected) and disconnect."""
+        # Ignore our own disconnect: the operation is finishing anyway.
+        self._operation_id += 1
+        try:
+            async with asyncio.timeout(_CLOSE_TIMEOUT):
+                if client.is_connected:
+                    await self._async_stop_notify(client)
+                await client.disconnect()
+        except TimeoutError:
+            _LOGGER.warning(
+                "Hanchu BLE disconnect for address=%s did not finish within %.0fs",
+                self.address,
+                _CLOSE_TIMEOUT,
+            )
+            return
+        _LOGGER.debug("Disconnected from Hanchu inverter address=%s", self.address)
+
+    def _handle_disconnect(self, operation_id: int) -> None:
+        """Wake any pending reply wait when the link drops mid-operation."""
+        if operation_id != self._operation_id:
+            return
+        _LOGGER.debug("Hanchu BLE link dropped for address=%s", self.address)
+        self._notification_queue.put_nowait(_LINK_LOST)
 
     async def _async_start_notify(self, client: BleakClient) -> None:
         """Start notifications on the inverter read characteristic."""
@@ -441,10 +500,16 @@ class HanchuBleClient:
             self.address,
             BLE_NOTIFY_CHARACTERISTIC_UUID,
         )
-        await client.start_notify(
-            BLE_NOTIFY_CHARACTERISTIC_UUID,
-            self._notification_handler,
-        )
+        try:
+            await client.start_notify(
+                BLE_NOTIFY_CHARACTERISTIC_UUID,
+                self._notification_handler,
+            )
+        except BleakError as err:
+            self.stats.link_drops += 1
+            raise HanchuLinkLostError(
+                f"BLE link dropped while starting notifications: {err}"
+            ) from err
 
     async def _async_stop_notify(self, client: BleakClient) -> None:
         """Stop notifications if possible."""
@@ -452,6 +517,45 @@ class HanchuBleClient:
             await client.stop_notify(BLE_NOTIFY_CHARACTERISTIC_UUID)
         except Exception:
             _LOGGER.debug("Failed to stop notifications for %s", self.address, exc_info=True)
+
+    async def _async_send(self, client: BleakClient, payload: bytes, step: str) -> None:
+        """Write a request to the logger, treating a GATT error as a dropped link.
+
+        The soak test showed the logger's link drop also surfaces here, when
+        it happens just as a request is sent rather than while waiting for
+        the reply: ESPHome reports "changed connection status while waiting
+        for BluetoothGATTWriteResponse ... Insufficient authorization (8)",
+        "Characteristic ...ff02 was not found" or GATT error 133. Raising
+        HanchuLinkLostError lets reads retry these like any other drop;
+        writes still never retry.
+        """
+        try:
+            await client.write_gatt_char(
+                BLE_WRITE_CHARACTERISTIC_UUID,
+                payload,
+                response=False,
+            )
+        except BleakError as err:
+            self.stats.link_drops += 1
+            raise HanchuLinkLostError(
+                f"BLE link dropped while sending {step}: {err}"
+            ) from err
+
+    async def _async_next_notification(self, timeout: float, step: str) -> bytes:
+        """Return the next notification, or raise if the link drops or it times out."""
+        try:
+            notification = await asyncio.wait_for(
+                self._notification_queue.get(), timeout=timeout
+            )
+        except TimeoutError as err:
+            self.stats.reply_timeouts += 1
+            raise HanchuReplyTimeoutError(
+                f"No reply to {step} within {timeout:.0f}s"
+            ) from err
+        if notification is _LINK_LOST:
+            self.stats.link_drops += 1
+            raise HanchuLinkLostError(f"BLE link dropped during {step}")
+        return notification
 
     async def _async_perform_handshake(self, client: BleakClient) -> None:
         """Send the AES handshake packet and wait for the ack."""
@@ -462,16 +566,11 @@ class HanchuBleClient:
             token,
             payload.hex(),
         )
-        await client.write_gatt_char(
-            BLE_WRITE_CHARACTERISTIC_UUID,
-            payload,
-            response=False,
-        )
+        await self._async_send(client, payload, "handshake")
 
         while True:
-            notification = await asyncio.wait_for(
-                self._notification_queue.get(),
-                timeout=_HANDSHAKE_ACK_TIMEOUT,
+            notification = await self._async_next_notification(
+                _HANDSHAKE_ACK_TIMEOUT, "handshake"
             )
             _LOGGER.debug(
                 "Received handshake-phase notification address=%s payload=%s",
@@ -482,12 +581,11 @@ class HanchuBleClient:
                 _LOGGER.debug("Handshake acknowledged for address=%s", self.address)
                 return
 
-    async def _async_wait_for_reply(self, *, encrypted: bool) -> HanchuReply:
+    async def _async_wait_for_reply(self, *, encrypted: bool, step: str) -> HanchuReply:
         """Wait for a full inverter reply to arrive via notifications."""
         while True:
-            notification = await asyncio.wait_for(
-                self._notification_queue.get(),
-                timeout=_DEFAULT_OPERATION_TIMEOUT,
+            notification = await self._async_next_notification(
+                _DEFAULT_OPERATION_TIMEOUT, step
             )
             _LOGGER.debug(
                 "Received Hanchu notification address=%s payload=%s",

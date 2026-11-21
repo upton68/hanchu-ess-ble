@@ -86,6 +86,7 @@ async def test_diagnostics_loaded_is_redacted(hass: HomeAssistant, bluetooth_moc
 
     # Useful content is present...
     assert diag["inverter"]["values"]["P071"] == 64
+    assert "ble_stats" in diag["inverter"]
     assert diag["inverter"]["consecutive_failures"] == 0
     assert diag["inverter"]["rssi"] == -60
     assert 0 <= diag["inverter"]["last_advertisement_seconds_ago"] < 60
