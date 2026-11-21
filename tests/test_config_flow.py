@@ -168,7 +168,7 @@ async def test_reconfigure_rejects_bad_address(hass):
     entry = _entry(hass)
     result = await _reconfigure(hass, entry, {CONF_DEVICE_NAME: "X", CONF_ADDRESS: "nonsense"})
     assert result["type"] is FlowResultType.FORM
-    assert result["errors"] == {"base": "invalid_address"}
+    assert result["errors"] == {"base": "invalid_mac"}
     assert entry.data[CONF_DEVICE_NAME] == "Hanchu ESS"
 
 
@@ -180,6 +180,22 @@ async def test_reconfigure_refuses_a_different_address(hass):
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "address_change_not_supported"}
     assert entry.data[CONF_ADDRESS] == INVERTER
+
+
+def test_every_flow_error_and_abort_has_text():
+    """Each error/abort key the flows can produce has a message in en.json."""
+    import json
+    from pathlib import Path
+
+    import custom_components.hanchu_ess_ble as integration
+
+    strings = json.loads(
+        (Path(integration.__file__).parent / "translations" / "en.json").read_text()
+    )["config"]
+    for key in ("invalid_address", "invalid_mac", "address_change_not_supported"):
+        assert key in strings["error"], key
+    for key in ("already_configured", "not_supported", "reconfigure_successful"):
+        assert key in strings["abort"], key
 
 
 # --- Options flow: battery selection -------------------------------------------------

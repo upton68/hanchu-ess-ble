@@ -121,20 +121,33 @@ async def test_power_press_ignored_while_transitioning(harness, clock):
     assert harness.inverter.writes == [("P500", 0)]
 
 
-async def test_power_write_failure_leaves_switch_usable(harness, clock, caplog):
+async def test_power_write_failure_is_reported_and_switch_stays_usable(harness, clock):
     harness.inverter.write_error = HanchuLinkLostError("BLE link dropped while sending write P500")
-    await _switch(harness, "turn_off", "inverter_power")
+    with pytest.raises(HomeAssistantError, match="Failed to set inverter power .*link dropped"):
+        await _switch(harness, "turn_off", "inverter_power")
     state = harness.state("switch", "inverter_power")
     assert state.state == STATE_ON
     assert state.attributes["transitioning"] is False
-    assert "Failed to set inverter power" in caplog.text
 
-
-async def test_power_write_rejected_leaves_switch_usable(harness, clock, caplog):
-    harness.inverter.write_status["P500"] = 1
+    # Works on the next try once the link is back.
+    harness.inverter.write_error = None
     await _switch(harness, "turn_off", "inverter_power")
-    assert harness.state("switch", "inverter_power").state == STATE_ON
-    assert "did not confirm success" in caplog.text
+    assert harness.inverter.registers["P500"] == 0
+
+
+async def test_power_write_failure_message_never_blank(harness, clock):
+    harness.inverter.write_error = TimeoutError()
+    with pytest.raises(HomeAssistantError, match=r"Failed to set inverter power \(P500=0\): TimeoutError"):
+        await _switch(harness, "turn_off", "inverter_power")
+
+
+async def test_power_write_rejected_is_reported(harness, clock):
+    harness.inverter.write_status["P500"] = 1
+    with pytest.raises(HomeAssistantError, match="did not confirm power P500=0"):
+        await _switch(harness, "turn_off", "inverter_power")
+    state = harness.state("switch", "inverter_power")
+    assert state.state == STATE_ON
+    assert state.attributes["transitioning"] is False
 
 
 # --- Preheating switches (L108, L114) ------------------------------------------

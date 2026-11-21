@@ -82,7 +82,7 @@ async def test_discard_reverts_without_writing(harness):
 async def test_failed_confirm_keeps_edits_staged(harness):
     await _stage_three(harness)
     harness.inverter.write_error = HanchuLinkLostError("BLE link dropped while sending write L017")
-    with pytest.raises(HanchuLinkLostError):
+    with pytest.raises(HomeAssistantError, match="Confirm Write failed: BLE link dropped.*still staged"):
         await _press(harness, "confirm_write")
     assert harness.pending_writes.pending_count == 3
     assert float(harness.state("number", "charge_power_limit").state) == 2500
@@ -97,10 +97,19 @@ async def test_failed_confirm_keeps_edits_staged(harness):
 async def test_partial_reject_keeps_unwritten_edits(harness):
     await _stage_three(harness)
     harness.inverter.write_status["P651"] = 1  # inverter rejects the work mode
-    with pytest.raises(HanchuProtocolError, match="P651"):
+    with pytest.raises(HomeAssistantError, match="Confirm Write failed: .*P651") as excinfo:
         await _press(harness, "confirm_write")
+    assert isinstance(excinfo.value.__cause__, HanchuProtocolError)
     # Everything stays staged for a retry; nothing is silently dropped.
     assert harness.pending_writes.pending_count == 3
+
+
+async def test_failed_confirm_error_never_blank(harness):
+    # A bare TimeoutError has no message; the error must still say something.
+    await _call(harness, "number", "set_value", "charge_power_limit", value=2500)
+    harness.inverter.write_error = TimeoutError()
+    with pytest.raises(HomeAssistantError, match="Confirm Write failed: TimeoutError"):
+        await _press(harness, "confirm_write")
 
 
 async def test_restaging_the_same_control_keeps_latest_value(harness):
