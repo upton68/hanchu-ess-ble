@@ -80,6 +80,10 @@ pytest -x --lf                              # stop at first failure / re-run las
 | `test_clock_sync.py` | DST offset, what gets written and when, refusals (zone mismatch, Confirm in progress), read-back verification |
 | `test_coordinator.py` | carry-forward on failed reads, failure threshold, value merging, slow-key rotation, model read, battery polling schedule |
 | `test_diagnostics.py` | diagnostics content and redaction |
+| `test_setup.py` | full setup with a fake inverter and battery: devices, device models, unload/reload, options reload, and the `confirm_write`, `read_registers` and `sync_clock` services |
+| `test_switch.py` | Inverter Power (P500) transition floors and timeout; preheating switches (L108, L114) confirm, revert and errors |
+| `test_controls.py` | number/select/time staging, Confirm Write and Discard Changes, failed and rejected confirms, Battery Recovery (P511) and Sync Clock buttons |
+| `test_config_flow.py` | user setup, Bluetooth discovery, reconfigure, and the battery options flow |
 
 ### Where to add tests
 
@@ -87,6 +91,10 @@ pytest -x --lf                              # stop at first failure / re-run las
 - Anything that stages or writes a register → `test_pending_writes.py` or a
   new test for that control.
 - Polling, failure handling, new poll keys → `test_coordinator.py`.
+- A new entity or service → use the `harness` fixture (`tests/conftest.py`),
+  which sets the whole integration up with fake inverter and battery clients
+  (`tests/integration_setup.py`). Drive it through Home Assistant services
+  and check `harness.inverter.writes` and entity states.
 - If you add a register that identifies the hardware (a serial number, an
   ID), add it to `SERIAL_REGISTERS` in `diagnostics.py` and to the redaction
   test.
