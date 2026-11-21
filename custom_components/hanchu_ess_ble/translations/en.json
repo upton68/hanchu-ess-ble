@@ -27,11 +27,13 @@
     },
     "error": {
       "invalid_address": "Select a discovered inverter.",
-      "address_change_not_supported": "Remove and re-add the inverter to change its BLE address."
+      "address_change_not_supported": "Remove and re-add the inverter to change its BLE address.",
+      "invalid_mac": "Enter a Bluetooth address like AA:BB:CC:DD:EE:FF."
     },
     "abort": {
       "already_configured": "This inverter is already configured.",
-      "not_supported": "This discovered Hanchu device is not a supported inverter."
+      "not_supported": "This discovered Hanchu device is not a supported inverter.",
+      "reconfigure_successful": "The inverter was reconfigured."
     }
   },
   "entity": {

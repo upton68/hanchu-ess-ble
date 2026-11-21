@@ -95,8 +95,21 @@ class HanchuConfirmWriteButton(ButtonEntity):
         self.async_write_ha_state()
 
     async def async_press(self) -> None:
-        """Flush the staged writes."""
-        await self._pending_writes.confirm()
+        """Flush the staged writes.
+
+        Failures are re-raised as HomeAssistantError so the UI shows the
+        reason (e.g. a dropped BLE link) instead of "Unknown error". The
+        buffer keeps the edits, so pressing again retries them.
+        """
+        try:
+            await self._pending_writes.confirm()
+        except HomeAssistantError:
+            raise
+        except Exception as err:  # noqa: BLE001 — surface any failure to the UI
+            raise HomeAssistantError(
+                f"Confirm Write failed: {str(err) or type(err).__name__}. "
+                "Your changes are still staged; press Confirm Write to retry."
+            ) from err
 
 
 class HanchuDiscardChangesButton(ButtonEntity):

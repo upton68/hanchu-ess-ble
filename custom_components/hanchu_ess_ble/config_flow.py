@@ -174,7 +174,7 @@ class HanchuEssBleConfigFlow(ConfigFlow, domain=DOMAIN):
             try:
                 address = _normalise_address(user_input[CONF_ADDRESS])
             except ValueError:
-                errors["base"] = "invalid_address"
+                errors["base"] = "invalid_mac"
             else:
                 if address != entry.unique_id:
                     errors["base"] = "address_change_not_supported"

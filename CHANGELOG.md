@@ -6,12 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-11-21
+
+### Fixed
+- **Inverter Power** now reports a failed on/off command: if the write
+  doesn't reach the inverter or is rejected, the app shows an error and a
+  calling automation step fails, like the preheating switches and the
+  Battery Recovery buttons. Previously it was only logged, so it looked as
+  if it had worked. The switch stays usable either way.
+- **Confirm Write** failures show the reason (e.g. "BLE link dropped …")
+  instead of "Unknown error", and say the changes are still staged.
+- **Reconfigure** with a mistyped Bluetooth address now says "Enter a
+  Bluetooth address like AA:BB:CC:DD:EE:FF." instead of "Select a
+  discovered inverter.", and a successful reconfigure has a message.
+
 ### Development
 - Tests now set up the whole integration with fake inverter and battery
   clients, covering the config, reconfigure and options flows, every
   control (Inverter Power, preheating switches, staged numbers/work
   mode/time slots, Confirm Write, Discard Changes, Battery Recovery, Sync
-  Clock), the services, and unload/reload. 219 tests in total.
+  Clock), the services, and unload/reload. 222 tests in total.
 - Release workflow leaves an existing release alone instead of failing
   (e.g. when the release was created on the GitHub page).
 
@@ -363,7 +377,8 @@ hardware types.
   sensors
 
 
-[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.9.1...HEAD
+[Unreleased]: https://github.com/upton68/hanchu-ess-ble/compare/v1.9.2...HEAD
+[1.9.2]: https://github.com/upton68/hanchu-ess-ble/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/upton68/hanchu-ess-ble/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/upton68/hanchu-ess-ble/compare/v1.8.0...v1.8.1

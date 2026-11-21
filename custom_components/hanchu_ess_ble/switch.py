@@ -156,20 +156,25 @@ class InverterPowerSwitch(CoordinatorEntity, SwitchEntity):
             )
             return
 
+        # Raise rather than just logging, so a failed command shows an error
+        # in the UI and fails the calling automation step, like the other
+        # switches and buttons. Nothing changed, so the switch stays usable.
         try:
             reply = await self.coordinator.client.async_write_value(
                 POWER_KEY, value, encrypted=True
             )
-        except Exception as err:
-            _LOGGER.error("Failed to set inverter power: %s", err)
-            return
+        except Exception as err:  # noqa: BLE001 — surface any failure to the UI
+            raise HomeAssistantError(
+                f"Failed to set inverter power ({POWER_KEY}={value}): "
+                f"{str(err) or type(err).__name__}"
+            ) from err
 
         result = reply.as_dict().get(POWER_KEY)
         if result != 0:
-            _LOGGER.error(
-                "Inverter power write did not confirm success: %s", reply.as_dict()
+            raise HomeAssistantError(
+                f"Inverter did not confirm power {POWER_KEY}={value} "
+                f"(reply: {reply.as_dict()})"
             )
-            return
 
         _LOGGER.info(
             "Inverter power command accepted (target=%s) — awaiting device transition",
