@@ -23,17 +23,28 @@
           "device_name": "Display name",
           "address": "BLE address"
         }
+      },
+      "battery_only": {
+        "title": "Add Hanchu batteries only",
+        "description": "No Hanchu inverter was found, but Hanchu batteries are in range. If your batteries are paired with another brand of inverter (e.g. LuxPower), choose them here to add just the batteries. There are no inverter sensors or controls in this mode.",
+        "data": {
+          "device_name": "Display name",
+          "battery_addresses": "Batteries"
+        }
       }
     },
     "error": {
       "invalid_address": "Select a discovered inverter.",
       "address_change_not_supported": "Remove and re-add the inverter to change its BLE address.",
-      "invalid_mac": "Enter a Bluetooth address like AA:BB:CC:DD:EE:FF."
+      "invalid_mac": "Enter a Bluetooth address like AA:BB:CC:DD:EE:FF.",
+      "no_batteries_selected": "Select at least one battery."
     },
     "abort": {
       "already_configured": "This inverter is already configured.",
       "not_supported": "This discovered Hanchu device is not a supported inverter.",
-      "reconfigure_successful": "The inverter was reconfigured."
+      "reconfigure_successful": "The inverter was reconfigured.",
+      "no_devices_found": "No Hanchu inverter or battery was found over Bluetooth. Check that it is in range of a Bluetooth adapter or proxy, then try again.",
+      "battery_only_reconfigure": "There is nothing to reconfigure for batteries on their own. Use Configure to choose the batteries or change the poll interval."
     }
   },
   "entity": {
@@ -41,6 +52,24 @@
       "rssi": {
         "name": "Signal strength"
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Batteries",
+        "description": "Choose which Hanchu batteries to poll over Bluetooth.",
+        "data": {
+          "battery_addresses": "Batteries",
+          "battery_scan_interval": "Battery poll interval (seconds)"
+        },
+        "data_description": {
+          "battery_scan_interval": "Batteries on their own only: how often each battery is read, one after another. 60 to 3600 seconds."
+        }
+      }
+    },
+    "error": {
+      "no_batteries_selected": "Select at least one battery."
     }
   }
 }

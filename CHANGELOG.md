@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Battery-only systems**: Hanchu batteries with a third-party inverter
+  (e.g. LuxPower) can now be added on their own, as in the cloud
+  integration's 2.6.0. When no Hanchu inverter is in range during setup,
+  the Hanchu batteries that are (`HC:L101…`) are offered instead. Each
+  battery is its own device with the full per-pack sensor set. No inverter
+  sensors or controls in this mode. Batteries are polled one after another
+  every 60 seconds by default, changeable under **Configure** (60–3600
+  seconds).
+- `read_registers` can read a battery on a battery-only system (set
+  `battery_address`).
+- Diagnostics say which mode the entry is in.
+
+### Changed
+- Adding the integration with no Hanchu inverter or battery in range now
+  says so, instead of showing an empty inverter list.
+- A battery already added to one entry is no longer offered in another
+  entry's battery list.
+
 ## [1.9.2] - 2026-11-21
 
 ### Fixed

@@ -21,7 +21,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_ADDRESS, CONF_BATTERY_ADDRESSES, CONF_DEVICE_NAME, DOMAIN
-from .coordinator import HanchuBleCoordinator, HanchuCoordinatorData
+from .coordinator import HanchuBatteryStation, HanchuBleCoordinator, HanchuCoordinatorData
 
 # Config entry fields and coordinator fields that identify the hardware.
 TO_REDACT = {
@@ -108,20 +108,25 @@ async def async_get_config_entry_diagnostics(
 
     domain_data = hass.data.get(DOMAIN, {})
     coordinator = domain_data.get(entry.entry_id)
-    if not isinstance(coordinator, HanchuBleCoordinator):
+    if isinstance(coordinator, HanchuBatteryStation):
+        diag["mode"] = "battery_only"
+        diag["battery_scan_interval"] = coordinator.scan_interval.total_seconds()
+    elif isinstance(coordinator, HanchuBleCoordinator):
+        diag["mode"] = "inverter"
+        diag["inverter"] = {
+            "last_update_success": coordinator.last_update_success,
+            "last_exception": repr(coordinator.last_exception)
+            if coordinator.last_exception
+            else None,
+            "ble_stats": _ble_stats(coordinator),
+            **(_coordinator_state(coordinator.data) or {}),
+        }
+    else:
         # Entry not set up (e.g. inverter not advertising yet) — still return
         # what we have so the download never fails.
         diag["state"] = "not_loaded"
         return diag
 
-    diag["inverter"] = {
-        "last_update_success": coordinator.last_update_success,
-        "last_exception": repr(coordinator.last_exception)
-        if coordinator.last_exception
-        else None,
-        "ble_stats": _ble_stats(coordinator),
-        **(_coordinator_state(coordinator.data) or {}),
-    }
     diag["batteries"] = {
         f"battery_{index}": {
             "last_update_success": battery.last_update_success,

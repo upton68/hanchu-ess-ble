@@ -32,7 +32,11 @@ from .models import (
     model_from_values,
 )
 from .const import BATTERY_POLL_KEYS, FAST_POLL_KEYS, SLOW_POLL_KEYS, DOMAIN
-from .coordinator import HanchuBatteryCoordinator, HanchuBleCoordinator
+from .coordinator import (
+    HanchuBatteryCoordinator,
+    HanchuBatteryStation,
+    HanchuBleCoordinator,
+)
 from .entity import HanchuBatteryCoordinatorEntity, HanchuCoordinatorEntity
 
 UNIT_VAR = "var"
@@ -477,7 +481,14 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Hanchu sensors from a config entry."""
-    coordinator: HanchuBleCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: HanchuBleCoordinator | HanchuBatteryStation = hass.data[DOMAIN][
+        entry.entry_id
+    ]
+
+    if isinstance(coordinator, HanchuBatteryStation):
+        # Battery-only entry (third-party inverter): no inverter sensors.
+        async_add_entities(_battery_entities(coordinator.battery_coordinators))
+        return
 
     # Combine fast and slow poll keys, deduplicated, preserving order.
     all_register_keys: tuple[str, ...] = FAST_POLL_KEYS + tuple(
@@ -515,8 +526,17 @@ async def async_setup_entry(
         HanchuModelSensor(coordinator, key) for key in MODEL_SENSORS
     )
 
-    # One set of battery entities per configured battery coordinator.
-    for battery_coordinator in coordinator.battery_coordinators:
+    entities.extend(_battery_entities(coordinator.battery_coordinators))
+
+    async_add_entities(entities)
+
+
+def _battery_entities(
+    battery_coordinators: list[HanchuBatteryCoordinator],
+) -> list[SensorEntity]:
+    """One set of battery entities per configured battery coordinator."""
+    entities: list[SensorEntity] = []
+    for battery_coordinator in battery_coordinators:
         entities.extend(
             HanchuBatteryRegisterSensor(
                 battery_coordinator,
@@ -530,8 +550,7 @@ async def async_setup_entry(
             for description in DIAGNOSTIC_BLE_SENSORS
         )
         entities.append(HanchuBatteryModelSensor(battery_coordinator))
-
-    async_add_entities(entities)
+    return entities
 
 
 class HanchuDiagnosticSensor(HanchuCoordinatorEntity, SensorEntity):

@@ -15,8 +15,18 @@ from homeassistant.core import (
 from homeassistant.helpers import device_registry as dr
 
 from .clock_sync import async_sync_clock
-from .const import DOMAIN, PLATFORMS
-from .coordinator import HanchuBleCoordinator
+from .const import (
+    BATTERY_ONLY_PLATFORMS,
+    CONF_MODE,
+    DOMAIN,
+    MODE_BATTERY_ONLY,
+    PLATFORMS,
+)
+from .coordinator import (
+    HanchuBatteryCoordinator,
+    HanchuBatteryStation,
+    HanchuBleCoordinator,
+)
 from .models import battery_model_from_values, model_from_values
 from .pending_writes import PendingWriteBuffer
 
@@ -42,8 +52,66 @@ def _async_find_entry_device(
     return None
 
 
+def is_battery_only(entry: ConfigEntry) -> bool:
+    """True for an entry holding only batteries (third-party inverter)."""
+    return entry.data.get(CONF_MODE) == MODE_BATTERY_ONLY
+
+
+@callback
+def _async_track_battery_models(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    battery_coordinators: list[HanchuBatteryCoordinator],
+) -> None:
+    """Keep each battery's device model in step with its cell layout (B147).
+
+    Same reason as the inverter model sync below: device_info is only read
+    when an entity is first added, before B147 may have been read.
+    """
+
+    def _make_battery_model_sync(battery_coordinator):
+        @callback
+        def _async_sync_battery_model() -> None:
+            values = battery_coordinator.data.values if battery_coordinator.data else None
+            name = battery_model_from_values(values)
+            if name is None:
+                return
+            device_registry = dr.async_get(hass)
+            device = _async_find_entry_device(
+                device_registry, entry.entry_id, battery_coordinator.address
+            )
+            if device is not None and device.model != name:
+                device_registry.async_update_device(device.id, model=name)
+
+        return _async_sync_battery_model
+
+    for battery_coordinator in battery_coordinators:
+        sync = _make_battery_model_sync(battery_coordinator)
+        entry.async_on_unload(battery_coordinator.async_add_listener(sync))
+        sync()
+
+
+async def _async_setup_battery_only(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up an entry that has batteries but no Hanchu inverter."""
+    station = HanchuBatteryStation(hass, entry)
+    await station.async_setup()
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = station
+    await hass.config_entries.async_forward_entry_setups(entry, BATTERY_ONLY_PLATFORMS)
+    _async_track_battery_models(hass, entry, station.battery_coordinators)
+    _async_register_services(hass)
+    _LOGGER.debug(
+        "Battery-only entry set up with %d batteries, polled every %ss",
+        len(station.battery_coordinators),
+        station.scan_interval.total_seconds(),
+    )
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Hanchu ESS BLE from a config entry."""
+    if is_battery_only(entry):
+        return await _async_setup_battery_only(hass, entry)
+
     coordinator = HanchuBleCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     await coordinator.async_setup()
@@ -84,31 +152,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(coordinator.async_add_listener(_async_sync_device_model))
     _async_sync_device_model()
 
-    def _make_battery_model_sync(battery_coordinator):
-        @callback
-        def _async_sync_battery_model() -> None:
-            """Same as above for a battery pack, from its cell layout (B147)."""
-            values = battery_coordinator.data.values if battery_coordinator.data else None
-            name = battery_model_from_values(values)
-            if name is None:
-                return
-            device_registry = dr.async_get(hass)
-            device = _async_find_entry_device(
-                device_registry, entry.entry_id, battery_coordinator.address
-            )
-            if device is not None and device.model != name:
-                device_registry.async_update_device(device.id, model=name)
-
-        return _async_sync_battery_model
-
-    for battery_coordinator in coordinator.battery_coordinators:
-        sync = _make_battery_model_sync(battery_coordinator)
-        entry.async_on_unload(battery_coordinator.async_add_listener(sync))
-        sync()
+    _async_track_battery_models(hass, entry, coordinator.battery_coordinators)
     # No update listener: the options flow (OptionsFlowWithReload) and the
     # reconfigure flow (async_update_reload_and_abort) both reload the entry
     # themselves. Registering a listener as well reloaded it twice and is
     # reported by Home Assistant, becoming an error from 2026.12.
+
+    _async_register_services(hass)
+    return True
+
+
+@callback
+def _async_register_services(hass: HomeAssistant) -> None:
+    """Register the integration's services, once, for every kind of entry.
+
+    The handlers look up whatever is set up in hass.data when called, so it
+    doesn't matter which entry registered them.
+    """
 
     async def handle_confirm_write(call: ServiceCall) -> ServiceResponse:
         """Flush staged writes and report success/failure — for automations.
@@ -131,7 +191,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 break
 
         if target_buffer is None:
-            return {"success": False, "message": "No Hanchu ESS BLE device configured"}
+            # Also the answer for a battery-only entry: no inverter, no writes.
+            return {"success": False, "message": "No Hanchu ESS BLE inverter configured"}
 
         if not target_buffer.has_pending:
             return {"success": True, "message": "Nothing staged to confirm"}
@@ -173,19 +234,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return {"success": False, "message": "No register keys given"}
         battery_address = call.data.get("battery_address")
 
+        # Inverter entries and battery-only entries both hold batteries.
         inverter: HanchuBleCoordinator | None = None
+        batteries: list[HanchuBatteryCoordinator] = []
         for value in hass.data.get(DOMAIN, {}).values():
-            if isinstance(value, HanchuBleCoordinator):
+            if isinstance(value, HanchuBleCoordinator) and inverter is None:
                 inverter = value
-                break
-        if inverter is None:
+            if isinstance(value, (HanchuBleCoordinator, HanchuBatteryStation)):
+                batteries.extend(value.battery_coordinators)
+        if inverter is None and not batteries:
             return {"success": False, "message": "No Hanchu ESS BLE device configured"}
 
         if battery_address:
             target = next(
                 (
                     bc
-                    for bc in inverter.battery_coordinators
+                    for bc in batteries
                     if bc.address.upper() == str(battery_address).upper()
                 ),
                 None,
@@ -197,6 +261,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 }
             client = target.client
             device = f"battery {target.address}"
+        elif inverter is None:
+            return {
+                "success": False,
+                "message": "No Hanchu inverter configured; set battery_address to read a battery",
+            }
         else:
             client = inverter.client
             device = f"inverter {inverter.address}"
@@ -237,7 +306,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 coordinator, entry_id = value, key
                 break
         if coordinator is None:
-            return {"success": False, "message": "No Hanchu ESS BLE device configured"}
+            return {"success": False, "message": "No Hanchu ESS BLE inverter configured"}
 
         try:
             result = await async_sync_clock(
@@ -258,14 +327,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             supports_response=SupportsResponse.OPTIONAL,
         )
 
-    return True
-
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    platforms = BATTERY_ONLY_PLATFORMS if is_battery_only(entry) else PLATFORMS
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
     if unload_ok:
-        coordinator: HanchuBleCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        coordinator: HanchuBleCoordinator | HanchuBatteryStation = hass.data[DOMAIN].pop(
+            entry.entry_id
+        )
         await coordinator.async_shutdown()
         hass.data[DOMAIN].pop(entry.entry_id + "_pending_writes", None)
         if not hass.data[DOMAIN]:

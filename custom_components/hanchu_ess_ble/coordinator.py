@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.components import bluetooth
@@ -24,7 +24,10 @@ from .const import (
     BATTERY_SCAN_INTERVAL,
     CONF_ADDRESS,
     CONF_BATTERY_ADDRESSES,
+    CONF_BATTERY_SCAN_INTERVAL,
     CONF_DEVICE_NAME,
+    DEFAULT_BATTERY_ONLY_NAME,
+    DEFAULT_BATTERY_ONLY_SCAN_INTERVAL_SECONDS,
     DEFAULT_NAME,
     FAST_POLL_KEYS,
     MAX_CONSECUTIVE_FAILURES,
@@ -411,11 +414,19 @@ class HanchuBatteryCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         hass: HomeAssistant,
         entry: ConfigEntry,
         address: str,
+        *,
+        scan_interval: timedelta | None = BATTERY_SCAN_INTERVAL,
     ) -> None:
-        """Initialise the battery coordinator."""
+        """Initialise the battery coordinator.
+
+        scan_interval=None means something else drives the polling (the
+        battery-only HanchuBatteryStation, which reads its batteries one
+        after another) and this coordinator starts no timer of its own.
+        """
         self.hass = hass
         self.entry = entry
         self.address = address
+        self._scan_interval = scan_interval
         # Configured name isn't user-editable per battery (yet) — derived
         # from the address so entities/devices are still distinguishable.
         self.configured_name = f"Hanchu Battery {address[-5:].replace(':', '')}"
@@ -462,11 +473,12 @@ class HanchuBatteryCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
         # rescheduling was not reliably re-arming for this dynamically
         # created sub-coordinator, so periodic refresh is driven explicitly
         # here instead.
-        self._unsubscribe_periodic_refresh = async_track_time_interval(
-            self.hass,
-            self._async_scheduled_refresh,
-            BATTERY_SCAN_INTERVAL,
-        )
+        if self._scan_interval is not None:
+            self._unsubscribe_periodic_refresh = async_track_time_interval(
+                self.hass,
+                self._async_scheduled_refresh,
+                self._scan_interval,
+            )
 
     async def _async_scheduled_refresh(self, _now) -> None:
         """Explicitly trigger a refresh on the battery's own interval."""
@@ -635,3 +647,85 @@ class HanchuBatteryCoordinator(DataUpdateCoordinator[HanchuCoordinatorData]):
                 else (self.data.last_cycle_duration if self.data else None)
             ),
         )
+
+
+class HanchuBatteryStation:
+    """Battery-only entry: Hanchu batteries with a third-party inverter.
+
+    There is no Hanchu inverter logger to connect to, so there is no
+    HanchuBleCoordinator. This holds the battery coordinators in its place
+    (same battery_coordinators attribute, so diagnostics and services treat
+    both kinds of entry alike) and polls them itself.
+
+    The batteries are read one after another rather than each on its own
+    timer: with several packs (LuxPower systems commonly have 4-6) all
+    connecting at once, an ESPHome Bluetooth proxy runs out of connection
+    slots and reads fail. A cycle that is still running when the next one is
+    due is not overlapped; the next one is skipped instead.
+    """
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Initialise the station."""
+        self.hass = hass
+        self.entry = entry
+        self.configured_name: str = entry.data.get(
+            CONF_DEVICE_NAME, DEFAULT_BATTERY_ONLY_NAME
+        )
+        self.scan_interval = timedelta(
+            seconds=entry.options.get(
+                CONF_BATTERY_SCAN_INTERVAL, DEFAULT_BATTERY_ONLY_SCAN_INTERVAL_SECONDS
+            )
+        )
+        self.battery_coordinators: list[HanchuBatteryCoordinator] = []
+        self._unsubscribe_periodic_refresh: CALLBACK_TYPE | None = None
+        self._poll_lock = asyncio.Lock()
+
+    async def async_setup(self) -> None:
+        """Read each battery once, then start polling them in turn.
+
+        Raises ConfigEntryNotReady (from the battery's first refresh) if a
+        configured battery isn't advertising yet, so Home Assistant retries
+        the whole entry later, as it does for an inverter entry.
+        """
+        try:
+            for address in self.entry.options.get(CONF_BATTERY_ADDRESSES, []):
+                battery_coordinator = HanchuBatteryCoordinator(
+                    self.hass, self.entry, address, scan_interval=None
+                )
+                await battery_coordinator.async_config_entry_first_refresh()
+                await battery_coordinator.async_setup()
+                self.battery_coordinators.append(battery_coordinator)
+        except Exception:
+            # Don't leave the batteries already set up listening to Bluetooth
+            # while the entry waits to retry.
+            await self.async_shutdown()
+            raise
+
+        self._unsubscribe_periodic_refresh = async_track_time_interval(
+            self.hass, self._async_poll_all, self.scan_interval
+        )
+
+    async def _async_poll_all(self, _now: datetime | None = None) -> None:
+        """Refresh every battery, one at a time."""
+        if self._poll_lock.locked():
+            _LOGGER.debug(
+                "Previous battery poll still running; skipping this cycle "
+                "(interval %ss)",
+                self.scan_interval.total_seconds(),
+            )
+            return
+        async with self._poll_lock:
+            for battery_coordinator in list(self.battery_coordinators):
+                # async_refresh records failures on the coordinator itself
+                # (last_update_success) rather than raising, so one battery
+                # failing doesn't stop the others being read.
+                await battery_coordinator.async_refresh()
+
+    async def async_shutdown(self) -> None:
+        """Stop polling and release every battery's Bluetooth listeners."""
+        if self._unsubscribe_periodic_refresh is not None:
+            self._unsubscribe_periodic_refresh()
+            self._unsubscribe_periodic_refresh = None
+        for battery_coordinator in self.battery_coordinators:
+            await battery_coordinator.async_shutdown()
+        self.battery_coordinators.clear()

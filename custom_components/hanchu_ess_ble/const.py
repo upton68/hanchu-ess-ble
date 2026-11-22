@@ -292,6 +292,29 @@ BATTERY_NAME_PREFIXES: tuple[str, ...] = (
 DEFAULT_BATTERY_SCAN_INTERVAL_SECONDS = 300
 BATTERY_SCAN_INTERVAL = timedelta(seconds=DEFAULT_BATTERY_SCAN_INTERVAL_SECONDS)
 
+# ---------------------------------------------------------------------------
+# Battery-only mode: Hanchu batteries with a third-party inverter (e.g.
+# LuxPower), so there is no Hanchu inverter logger to connect to. The entry
+# holds just the batteries (CONF_BATTERY_ADDRESSES in its options), polled
+# one after another by HanchuBatteryStation. Matches the cloud integration's
+# battery-only stations (hanchu-ess-ha 2.6.0).
+# ---------------------------------------------------------------------------
+
+CONF_MODE = "mode"
+MODE_BATTERY_ONLY = "battery_only"
+CONF_BATTERY_SCAN_INTERVAL = "battery_scan_interval"
+
+DEFAULT_BATTERY_ONLY_NAME = "Hanchu Batteries"
+# The batteries are the only data in this mode, so poll faster than the
+# 300s used alongside an inverter (same default and minimum as the cloud
+# integration's battery-only stations).
+DEFAULT_BATTERY_ONLY_SCAN_INTERVAL_SECONDS = 60
+MIN_BATTERY_ONLY_SCAN_INTERVAL_SECONDS = 60
+MAX_BATTERY_ONLY_SCAN_INTERVAL_SECONDS = 3600
+
+# No inverter, so no controls: just the battery sensors.
+BATTERY_ONLY_PLATFORMS: list[Platform] = [Platform.SENSOR]
+
 MODEL_BATTERY = "ESS Battery (BLE)"
 
 # All battery values are cheap enough (12 keys, single connection, verified
