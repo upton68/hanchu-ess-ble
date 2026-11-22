@@ -78,6 +78,7 @@ pytest -x --lf                              # stop at first failure / re-run las
 | `test_ble_client.py` | read/write round trips, request batching, write status checks, hang → timeout, connection lock |
 | `test_pending_writes.py` | staging, Confirm Write, Discard, auto-discard timeout, and the concurrent-confirm / staged-during-flush races |
 | `test_clock_sync.py` | DST offset, what gets written and when, refusals (zone mismatch, Confirm in progress), read-back verification |
+| `test_battery_only.py` | battery-only entries: offered when no inverter is in range, options (interval, at least one battery), reconfigure, battery-only setup, polling batteries one at a time, services and diagnostics |
 | `test_coordinator.py` | carry-forward on failed reads, failure threshold, value merging, slow-key rotation, model read, battery polling schedule |
 | `test_diagnostics.py` | diagnostics content and redaction |
 | `test_setup.py` | full setup with a fake inverter and battery: devices, device models, unload/reload, options reload, and the `confirm_write`, `read_registers` and `sync_clock` services |

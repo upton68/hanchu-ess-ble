@@ -16,6 +16,7 @@ This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com
 
 - **Real-time sensors**: Battery SOC, Battery Power, Battery Temperature, Battery Capacity, Grid Power, AC Coupled PV Power, Load Power (derived), Grid Frequency, L1 Voltage/Current, EPS sensors, and more
 - **Individual battery pack monitoring**: optionally poll each battery pack's own BLE logger directly for per-pack SoC, voltage, current, and temperature — each pack shown as its own device, independent of the inverter's aggregate battery readings
+- **Battery-only systems**: Hanchu batteries paired with another brand of inverter (e.g. LuxPower) can be added on their own, with the same per-pack sensors (see [Battery-only systems](#battery-only-systems))
 - **Work Mode control**: switch between Self-consumption, Backup, User-defined, and Off-grid modes
 - **Charge/Discharge Power Limits**: set maximum charge and discharge power in Watts
 - **SOC controls**: Maximum Charge SOC, Minimum Discharge SOC (on-grid), Grid to Battery Charge Maximum
@@ -28,7 +29,7 @@ This integration is a fork of [Blustery7752's hanchu-ess-ble](https://github.com
 
 ## Requirements
 
-- A Hanchu iESS battery storage system with a compatible inverter
+- A Hanchu iESS battery storage system with a compatible inverter, or Hanchu batteries with a third-party inverter (battery sensors only, see [Battery-only systems](#battery-only-systems))
 - Home Assistant with Bluetooth support, or a Bluetooth proxy
 - Home Assistant 2026.11 or newer uses the built-in **Marketplace** (Settings → Marketplace) to install community integrations; 2026.10 or older needs HACS installed
 - A Bluetooth proxy is **strongly recommended** for reliable connectivity — onboard Bluetooth on HA hardware has been reported as unreliable with this integration across multiple setups. Tested with the **M5Stack Atom Lite** running ESPHome's Bluetooth proxy firmware, placed within range of the inverter (available from The Pi Hut for around £10). If you plan to use individual battery pack monitoring, the same proxy needs to be within range of the battery packs too — other Bluetooth sources have not been verified reliable for this integration, including for the inverter itself.
@@ -83,6 +84,20 @@ To monitor individual battery packs directly:
 4. Save — each selected battery will appear as its own device with its own sensors
 
 Battery packs poll on a 300-second interval, independently of the inverter's faster poll cycle. To add or remove batteries later, revisit **Configure** at any time.
+
+### Battery-only systems
+
+If your Hanchu batteries are paired with **another brand of inverter** (for example LuxPower), the integration can add just the batteries. When you add the integration and no Hanchu inverter (`HC:L110…` and similar) is in range, it looks for Hanchu batteries (`HC:L101…`) instead and offers to add those:
+
+1. Go to **Settings → Devices & Services → Add Integration** and search for **Hanchu ESS BLE**
+2. Give the system a name and tick the batteries to add (all those in range are ticked by default)
+3. Submit — each battery appears as its own device
+
+You get the same per-pack sensors as above (SoC, pack voltage, current, temperatures, model, firmware and the BLE health diagnostics). There are no inverter sensors, controls, Confirm Write or Sync Clock in this mode, since the inverter isn't Hanchu's. Batteries aren't discovered automatically, so start from **Add Integration**.
+
+Batteries are polled every **60 seconds** by default, one after another rather than all at once, so a single Bluetooth proxy isn't asked for more connections than it has. Change the interval (60–3600 seconds) or add and remove batteries under **Configure**. With many batteries, allow a few seconds per battery: if a cycle is still running when the next is due, that next one is skipped rather than overlapped.
+
+A battery can only belong to one entry, so batteries already added (to a battery-only entry or under an inverter) aren't offered again.
 
 ---
 
@@ -325,7 +340,7 @@ Read-only diagnostic. Reads any register keys once, from the inverter or from a 
 | Field | Description |
 |---|---|
 | `keys` | List of register keys, e.g. `["L108", "L114", "P511"]` |
-| `battery_address` | Optional. Bluetooth address of a configured battery pack. Leave empty to read from the inverter. |
+| `battery_address` | Optional. Bluetooth address of a configured battery pack. Leave empty to read from the inverter. Required on a battery-only system. |
 
 Returns `success`, `device`, `values` (key → raw value) and `missing` (keys the device didn't answer). Run it from **Developer Tools → Actions** with "Return response" ticked:
 
@@ -378,7 +393,9 @@ Slow poll values persist their last known reading between updates — sensors wi
 
 ### Battery Pack Polling
 
-Individual battery packs (if configured) poll on a separate, much slower 300-second interval, since SoC/voltage/temperature change gradually and don't need the inverter's faster cadence. Each battery reads all of its sensor values in a single BLE connection per cycle, rather than the tiered fast/slow approach used for the inverter. Battery polling failures follow the same consecutive-failure tolerance as the inverter, and are tracked independently per pack — one battery's BLE issues cannot affect another battery or the inverter.
+Individual battery packs (if configured alongside an inverter) poll on a separate, much slower 300-second interval, since SoC/voltage/temperature change gradually and don't need the inverter's faster cadence. Each battery reads all of its sensor values in a single BLE connection per cycle, rather than the tiered fast/slow approach used for the inverter. Battery polling failures follow the same consecutive-failure tolerance as the inverter, and are tracked independently per pack — one battery's BLE issues cannot affect another battery or the inverter.
+
+On a [battery-only system](#battery-only-systems) the batteries are the only data, so they poll every 60 seconds by default (configurable, 60–3600), one after another.
 
 ---
 

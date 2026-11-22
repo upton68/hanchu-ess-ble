@@ -15,18 +15,25 @@ from homeassistant.config_entries import (
     ConfigFlowResult,
     OptionsFlowWithReload,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 import homeassistant.helpers.config_validation as cv
 
 from .const import (
     BATTERY_NAME_PREFIXES,
     CONF_ADDRESS,
     CONF_BATTERY_ADDRESSES,
+    CONF_BATTERY_SCAN_INTERVAL,
     CONF_DEVICE_NAME,
     CONF_DISCOVERED_ADDRESS,
+    CONF_MODE,
+    DEFAULT_BATTERY_ONLY_NAME,
+    DEFAULT_BATTERY_ONLY_SCAN_INTERVAL_SECONDS,
     DEFAULT_NAME,
     DOMAIN,
     INVERTER_NAME_PREFIXES,
+    MAX_BATTERY_ONLY_SCAN_INTERVAL_SECONDS,
+    MIN_BATTERY_ONLY_SCAN_INTERVAL_SECONDS,
+    MODE_BATTERY_ONLY,
 )
 
 
@@ -52,6 +59,41 @@ def _normalise_address(address: str) -> str:
     if len(cleaned) != 12:
         raise ValueError("invalid_mac")
     return ":".join(cleaned[index : index + 2] for index in range(0, 12, 2))
+
+
+def _batteries_in_other_entries(hass: HomeAssistant, entry_id: str | None) -> set[str]:
+    """Battery addresses already configured in any entry except entry_id.
+
+    A battery is only ever polled by one entry, so it isn't offered again
+    elsewhere (two entries connecting to the same pack would fight over it).
+    """
+    configured: set[str] = set()
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.entry_id != entry_id:
+            configured.update(entry.options.get(CONF_BATTERY_ADDRESSES, []))
+    return configured
+
+
+def _discovered_batteries(
+    hass: HomeAssistant, *, exclude: set[str] | None = None
+) -> dict[str, str]:
+    """Return currently discovered battery devices, keyed by address."""
+    exclude = exclude or set()
+    devices: dict[str, str] = {}
+    for service_info in bluetooth.async_discovered_service_info(
+        hass,
+        connectable=False,
+    ):
+        name = service_info.name or service_info.device.name
+        if not _is_battery_name(name) or service_info.address in exclude:
+            continue
+        label = f"{name} ({service_info.address})" if name else service_info.address
+        devices[service_info.address] = label
+    return dict(sorted(devices.items(), key=lambda item: item[1].casefold()))
+
+
+def _is_battery_only(entry: ConfigEntry) -> bool:
+    return entry.data.get(CONF_MODE) == MODE_BATTERY_ONLY
 
 
 class HanchuEssBleConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -83,9 +125,21 @@ class HanchuEssBleConfigFlow(ConfigFlow, domain=DOMAIN):
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
-        """Handle setup from discovered inverters."""
+        """Handle setup from discovered inverters.
+
+        With no Hanchu inverter in range but Hanchu batteries advertising
+        (batteries with a third-party inverter, e.g. LuxPower), offer to add
+        just the batteries instead.
+        """
         errors: dict[str, str] = {}
         discovered = self._discovered_inverters()
+
+        if user_input is None and not discovered:
+            if _discovered_batteries(
+                self.hass, exclude=_batteries_in_other_entries(self.hass, None)
+            ):
+                return await self.async_step_battery_only()
+            return self.async_abort(reason="no_devices_found")
 
         if user_input is not None:
             address_input = user_input.get(CONF_DISCOVERED_ADDRESS)
@@ -110,6 +164,53 @@ class HanchuEssBleConfigFlow(ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(CONF_DEVICE_NAME, default=DEFAULT_NAME): str,
                     vol.Required(CONF_DISCOVERED_ADDRESS): vol.In(discovered),
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_battery_only(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Add Hanchu batteries on their own (no Hanchu inverter)."""
+        errors: dict[str, str] = {}
+        discovered = _discovered_batteries(
+            self.hass, exclude=_batteries_in_other_entries(self.hass, None)
+        )
+
+        if user_input is not None:
+            selected = [a for a in user_input.get(CONF_BATTERY_ADDRESSES, []) if a]
+            if not selected:
+                errors["base"] = "no_batteries_selected"
+            else:
+                # Any stable id will do; the first battery's address is one.
+                # Batteries already in an entry aren't offered (above), so
+                # this only guards against two flows racing each other.
+                await self.async_set_unique_id(sorted(selected)[0])
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=user_input[CONF_DEVICE_NAME],
+                    data={
+                        CONF_MODE: MODE_BATTERY_ONLY,
+                        CONF_DEVICE_NAME: user_input[CONF_DEVICE_NAME],
+                    },
+                    options={
+                        CONF_BATTERY_ADDRESSES: selected,
+                        CONF_BATTERY_SCAN_INTERVAL: DEFAULT_BATTERY_ONLY_SCAN_INTERVAL_SECONDS,
+                    },
+                )
+        elif not discovered:
+            return self.async_abort(reason="no_devices_found")
+
+        return self.async_show_form(
+            step_id="battery_only",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_DEVICE_NAME, default=DEFAULT_BATTERY_ONLY_NAME): str,
+                    vol.Required(
+                        CONF_BATTERY_ADDRESSES, default=list(discovered)
+                    ): cv.multi_select(discovered),
                 }
             ),
             errors=errors,
@@ -169,6 +270,10 @@ class HanchuEssBleConfigFlow(ConfigFlow, domain=DOMAIN):
         """Allow the user to update the configured BLE address or name."""
         errors: dict[str, str] = {}
         entry = self._get_reconfigure_entry()
+        if _is_battery_only(entry):
+            # Nothing to reconfigure: batteries are chosen under Configure,
+            # and the entry can be renamed from its menu.
+            return self.async_abort(reason="battery_only_reconfigure")
 
         if user_input is not None:
             try:
@@ -216,32 +321,23 @@ class HanchuEssBleConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class HanchuEssBleOptionsFlow(OptionsFlowWithReload):
-    """Options flow — currently just battery pack selection.
+    """Options flow — battery pack selection (and, battery-only, the poll interval).
 
     OptionsFlowWithReload reloads the entry when the options change, so the
     integration registers no update listener of its own.
     """
-
-    def _discovered_batteries(self) -> dict[str, str]:
-        """Return currently discovered battery devices, keyed by address."""
-        devices: dict[str, str] = {}
-        for service_info in bluetooth.async_discovered_service_info(
-            self.hass,
-            connectable=False,
-        ):
-            name = service_info.name or service_info.device.name
-            if not _is_battery_name(name):
-                continue
-            label = f"{name} ({service_info.address})" if name else service_info.address
-            devices[service_info.address] = label
-        return dict(sorted(devices.items(), key=lambda item: item[1].casefold()))
 
     async def async_step_init(
         self,
         user_input: dict[str, Any] | None = None,
     ) -> ConfigFlowResult:
         """Let the user pick which discovered batteries to poll."""
-        discovered = self._discovered_batteries()
+        battery_only = _is_battery_only(self.config_entry)
+        errors: dict[str, str] = {}
+        discovered = _discovered_batteries(
+            self.hass,
+            exclude=_batteries_in_other_entries(self.hass, self.config_entry.entry_id),
+        )
         currently_configured: list[str] = self.config_entry.options.get(
             CONF_BATTERY_ADDRESSES, []
         )
@@ -254,19 +350,43 @@ class HanchuEssBleOptionsFlow(OptionsFlowWithReload):
             discovered.setdefault(address, address)
 
         if user_input is not None:
-            return self.async_create_entry(
-                title="",
-                data={CONF_BATTERY_ADDRESSES: user_input[CONF_BATTERY_ADDRESSES]},
+            selected = user_input[CONF_BATTERY_ADDRESSES]
+            if battery_only and not selected:
+                # The batteries are all a battery-only entry has.
+                errors["base"] = "no_batteries_selected"
+            else:
+                data: dict[str, Any] = {CONF_BATTERY_ADDRESSES: selected}
+                if battery_only:
+                    data[CONF_BATTERY_SCAN_INTERVAL] = user_input[
+                        CONF_BATTERY_SCAN_INTERVAL
+                    ]
+                return self.async_create_entry(title="", data=data)
+
+        schema: dict[Any, Any] = {
+            vol.Optional(
+                CONF_BATTERY_ADDRESSES,
+                default=currently_configured,
+            ): cv.multi_select(discovered),
+        }
+        if battery_only:
+            schema[
+                vol.Required(
+                    CONF_BATTERY_SCAN_INTERVAL,
+                    default=self.config_entry.options.get(
+                        CONF_BATTERY_SCAN_INTERVAL,
+                        DEFAULT_BATTERY_ONLY_SCAN_INTERVAL_SECONDS,
+                    ),
+                )
+            ] = vol.All(
+                vol.Coerce(int),
+                vol.Range(
+                    min=MIN_BATTERY_ONLY_SCAN_INTERVAL_SECONDS,
+                    max=MAX_BATTERY_ONLY_SCAN_INTERVAL_SECONDS,
+                ),
             )
 
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_BATTERY_ADDRESSES,
-                        default=currently_configured,
-                    ): cv.multi_select(discovered),
-                }
-            ),
+            data_schema=vol.Schema(schema),
+            errors=errors,
         )
